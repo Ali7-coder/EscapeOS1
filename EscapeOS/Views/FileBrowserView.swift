@@ -12,11 +12,13 @@ struct FileBrowserView: View {
     @State private var createName = ""
     @State private var renameItem: FileItem?
     @State private var renameName = ""
-    @State private var deleteItem: FileItem?
     @State private var searchText = ""
     @State private var openRequest: OpenRequest?
     @State private var propertiesItem: FileItem?
     @State private var showImporter = false
+    @State private var selecting = false
+    @State private var selected = Set<String>()
+    @State private var pendingDelete: [FileItem] = []
 
     init(app: InstalledApp) {
         self.app = app
@@ -46,15 +48,22 @@ struct FileBrowserView: View {
                 fileList
             }
         }
-        .navigationTitle(vm.displayTitle)
+        .navigationTitle(selecting ? selectionTitle : vm.displayTitle)
         .navigationBarTitleDisplayMode(.inline)
         .searchable(text: $searchText, prompt: "Filter this folder")
         .toolbar {
-            ToolbarItem(placement: .navigationBarTrailing) {
-                HStack {
-                    if vm.canGoUp {
-                        Button("Up") { vm.goUp() }
+            ToolbarItemGroup(placement: .navigationBarTrailing) {
+                if selecting {
+                    Button(allVisibleSelected ? "Deselect All" : "Select All") {
+                        if allVisibleSelected {
+                            selected.removeAll()
+                        } else {
+                            selected.formUnion(visibleItems.map(\.path))
+                        }
                     }
+                    .disabled(visibleItems.isEmpty)
+                    Button("Done") { exitSelection() }
+                } else {
                     if !clipboard.isEmpty {
                         Button {
                             vm.paste()
@@ -64,6 +73,7 @@ struct FileBrowserView: View {
                         .disabled(vm.isPasting)
                         .accessibilityLabel(clipboard.pasteTitle)
                     }
+                    Button("Select") { enterSelection() }
                     Menu {
                         if !clipboard.isEmpty {
                             Button {
@@ -97,6 +107,11 @@ struct FileBrowserView: View {
                         Image(systemName: "plus")
                     }
                 }
+            }
+        }
+        .safeAreaInset(edge: .bottom) {
+            if selecting {
+                selectionBar
             }
         }
         .onAppear { vm.open(vm.currentPath) }
@@ -153,16 +168,15 @@ struct FileBrowserView: View {
                 renameItem = nil
             }
         }
-        .alert("Delete \(deleteItem?.name ?? "item")?", isPresented: Binding(
-            get: { deleteItem != nil },
-            set: { if !$0 { deleteItem = nil } }
+        .alert(deleteTitle, isPresented: Binding(
+            get: { !pendingDelete.isEmpty },
+            set: { if !$0 { pendingDelete = [] } }
         )) {
-            Button("Cancel", role: .cancel) { deleteItem = nil }
+            Button("Cancel", role: .cancel) { pendingDelete = [] }
             Button("Delete", role: .destructive) {
-                if let item = deleteItem {
-                    vm.delete(item: item)
-                }
-                deleteItem = nil
+                vm.delete(items: pendingDelete)
+                selected.subtract(pendingDelete.map(\.path))
+                pendingDelete = []
             }
         } message: {
             Text("This cannot be undone. Close the target app first if the file might be in use.")
@@ -190,10 +204,45 @@ struct FileBrowserView: View {
         return vm.items.filter { $0.name.localizedCaseInsensitiveContains(query) }
     }
 
+    private var selectedItems: [FileItem] {
+        visibleItems.filter { selected.contains($0.path) }
+    }
+
+    private var allVisibleSelected: Bool {
+        !visibleItems.isEmpty && visibleItems.allSatisfy { selected.contains($0.path) }
+    }
+
+    private var selectionTitle: String {
+        let n = selectedItems.count
+        if n == 0 { return "Select Items" }
+        return n == 1 ? "1 Selected" : "\(n) Selected"
+    }
+
+    private var deleteTitle: String {
+        let items = pendingDelete
+        if items.count == 1 { return "Delete \(items[0].name)?" }
+        if items.isEmpty { return "Delete?" }
+        return "Delete \(items.count) items?"
+    }
+
     private var fileList: some View {
         List {
             ForEach(visibleItems) { item in
-                if item.isDirectory {
+                if selecting {
+                    Button {
+                        toggleSelection(item)
+                    } label: {
+                        HStack(spacing: 12) {
+                            Image(systemName: selected.contains(item.path) ? "checkmark.circle.fill" : "circle")
+                                .foregroundColor(selected.contains(item.path) ? .accentColor : .secondary)
+                                .imageScale(.large)
+                            FileRow(item: item)
+                            Spacer(minLength: 0)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .listRowBackground(selected.contains(item.path) ? Color.accentColor.opacity(0.12) : nil)
+                } else if item.isDirectory {
                     NavigationLink(destination: FileBrowserView(app: app, initialPath: item.path)) {
                         FileRow(item: item)
                     }
@@ -205,15 +254,126 @@ struct FileBrowserView: View {
                     .contextMenu { itemMenu(for: item) }
                 }
             }
-            .onDelete { offsets in
-                let snapshot = visibleItems
-                for index in offsets where index < snapshot.count {
-                    deleteItem = snapshot[index]
-                }
-            }
+            .onDelete(perform: deleteAtOffsets)
         }
+        .environment(\.editMode, .constant(.inactive))
         .refreshable {
             vm.open(vm.currentPath)
+        }
+        .onChange(of: vm.items.map(\.path)) { paths in
+            selected.formIntersection(Set(paths))
+        }
+    }
+
+    private func deleteAtOffsets(_ offsets: IndexSet) {
+        guard !selecting else { return }
+        let snapshot = visibleItems
+        pendingDelete = offsets.compactMap { $0 < snapshot.count ? snapshot[$0] : nil }
+    }
+
+    private var selectionBar: some View {
+        VStack(spacing: 0) {
+            Divider()
+            HStack(spacing: 0) {
+                selectionAction("Copy", "doc.on.doc", enabled: !selectedItems.isEmpty) {
+                    FileClipboard.shared.copy(selectedItems, containerPath: app.containerPath)
+                }
+                selectionAction("Cut", "scissors", enabled: !selectedItems.isEmpty) {
+                    FileClipboard.shared.cut(selectedItems, containerPath: app.containerPath)
+                }
+                selectionAction("Paste", "doc.on.clipboard", enabled: !clipboard.isEmpty && !vm.isPasting) {
+                    vm.paste()
+                }
+                Menu {
+                    Button {
+                        vm.duplicate(items: selectedItems)
+                    } label: {
+                        Label("Duplicate", systemImage: "plus.square.on.square")
+                    }
+                    .disabled(selectedItems.isEmpty)
+                    Button {
+                        FileClipboard.copyText(selectedItems.map(\.path).joined(separator: "\n"))
+                    } label: {
+                        Label(selectedItems.count == 1 ? "Copy Path" : "Copy Paths", systemImage: "list.clipboard")
+                    }
+                    .disabled(selectedItems.isEmpty)
+                    if selectedItems.count == 1, let item = selectedItems.first {
+                        Button {
+                            renameName = item.name
+                            renameItem = item
+                        } label: {
+                            Label("Rename", systemImage: "pencil")
+                        }
+                        Button {
+                            propertiesItem = item
+                        } label: {
+                            Label("Properties", systemImage: "info.circle")
+                        }
+                        if !item.isDirectory {
+                            Button {
+                                vm.export(item: item)
+                            } label: {
+                                Label("Share / Save to Files", systemImage: "square.and.arrow.up")
+                            }
+                            .disabled(vm.isExporting)
+                        }
+                    }
+                } label: {
+                    VStack(spacing: 4) {
+                        Image(systemName: "ellipsis.circle")
+                            .font(.title3)
+                        Text("More")
+                            .font(.caption2)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 8)
+                }
+                .disabled(selectedItems.isEmpty)
+                selectionAction("Delete", "trash", enabled: !selectedItems.isEmpty, destructive: true) {
+                    pendingDelete = selectedItems
+                }
+            }
+            .padding(.horizontal, 4)
+        }
+        .background(.bar)
+    }
+
+    private func selectionAction(
+        _ title: String,
+        _ systemImage: String,
+        enabled: Bool,
+        destructive: Bool = false,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            VStack(spacing: 4) {
+                Image(systemName: systemImage)
+                    .font(.title3)
+                Text(title)
+                    .font(.caption2)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 8)
+            .foregroundColor(destructive && enabled ? .red : nil)
+        }
+        .disabled(!enabled)
+    }
+
+    private func enterSelection(preselect item: FileItem? = nil) {
+        selecting = true
+        selected = Set(item.map { [$0.path] } ?? [])
+    }
+
+    private func exitSelection() {
+        selecting = false
+        selected.removeAll()
+    }
+
+    private func toggleSelection(_ item: FileItem) {
+        if selected.contains(item.path) {
+            selected.remove(item.path)
+        } else {
+            selected.insert(item.path)
         }
     }
 
@@ -248,6 +408,11 @@ struct FileBrowserView: View {
             .disabled(vm.isExporting)
         }
         Button {
+            enterSelection(preselect: item)
+        } label: {
+            Label("Select", systemImage: "checkmark.circle")
+        }
+        Button {
             FileClipboard.shared.copy([item], containerPath: app.containerPath)
         } label: {
             Label("Copy", systemImage: "doc.on.doc")
@@ -279,7 +444,7 @@ struct FileBrowserView: View {
             Label("Rename", systemImage: "pencil")
         }
         Button(role: .destructive) {
-            deleteItem = item
+            pendingDelete = [item]
         } label: {
             Label("Delete", systemImage: "trash")
         }
@@ -376,10 +541,6 @@ final class FileBrowserViewModel: ObservableObject {
         }
     }
 
-    var canGoUp: Bool {
-        currentPath != app.containerPath && currentPath != "/"
-    }
-
     var displayTitle: String {
         let last = (currentPath as NSString).lastPathComponent
         return last.isEmpty ? app.name : last
@@ -412,11 +573,6 @@ final class FileBrowserViewModel: ObservableObject {
         }
     }
 
-    func goUp() {
-        let parent = (currentPath as NSString).deletingLastPathComponent
-        open(parent.isEmpty ? "/" : parent)
-    }
-
     func create(name: String, kind: CreateKind) {
         guard let safe = FileNameRules.sanitize(name) else {
             operationError = IdentifiedError(message: "Enter a file name without slashes.")
@@ -443,8 +599,15 @@ final class FileBrowserViewModel: ObservableObject {
     }
 
     func delete(item: FileItem) {
+        delete(items: [item])
+    }
+
+    func delete(items: [FileItem]) {
+        guard !items.isEmpty else { return }
         mutate {
-            try self.files.deleteItem(at: item.path)
+            for item in items {
+                try self.files.deleteItem(at: item.path)
+            }
         }
     }
 
@@ -539,14 +702,21 @@ final class FileBrowserViewModel: ObservableObject {
     }
 
     func duplicate(item: FileItem) {
+        duplicate(items: [item])
+    }
+
+    func duplicate(items: [FileItem]) {
+        guard !items.isEmpty else { return }
         mutate {
-            let parent = (item.path as NSString).deletingLastPathComponent
-            let ns = item.name as NSString
-            let ext = ns.pathExtension
-            let base = ns.deletingPathExtension
-            let preferred = ext.isEmpty ? "\(item.name) copy" : "\(base) copy.\(ext)"
-            let dest = self.files.uniqueDestination(in: parent, preferredName: preferred)
-            try self.files.copyItem(at: item.path, to: dest)
+            for item in items {
+                let parent = (item.path as NSString).deletingLastPathComponent
+                let ns = item.name as NSString
+                let ext = ns.pathExtension
+                let base = ns.deletingPathExtension
+                let preferred = ext.isEmpty ? "\(item.name) copy" : "\(base) copy.\(ext)"
+                let dest = self.files.uniqueDestination(in: parent, preferredName: preferred)
+                try self.files.copyItem(at: item.path, to: dest)
+            }
         }
     }
 
