@@ -26,10 +26,23 @@ On-device file browser and App Store app-data backup/restore for sideloaded iOS,
 
 ## Requirements
 
-- iOS 15+ (verified on iPhone 17, iOS 26.5.1, 2026-08-14)
+Working product (list apps + open another app's Data container) is **verified only on iPhone 17, iOS 26.5.1**.
+
+The IPA's `MinimumOSVersion` is 15.0 so it can *install* on older iOS. That is not the same as the features working:
+
+| Piece | What the code actually needs |
+|---|---|
+| App listing | LocalDevVPN + **Remote Pairing** (`tunnel_create_rppairing` / RSD). That is the iOS **26.4+** StikDebug path. There is no lockdown / iOS 17.4–18 fallback in this tree. |
+| Container open | `bad_query` (containermanager sandbox extension). Upstream states **iOS 26.0–26.6.1 / 27.0b4**, and says iOS 18 is untested. |
+| LocalDevVPN | App Store lists iOS 14+, but EscapeOS only talks to it as the RSD loopback at `10.7.0.1:49152`. |
+
+iOS 15, 16, 17, and 18 are **not** a supported or hardware-tested product surface. An iPhone 8 Plus on iOS 16.7.15 is on this desk; EscapeOS was not installed there (free Apple ID already at 3 apps).
+
+Also required on the verified path:
+
 - [LocalDevVPN](https://apps.apple.com/app/id6755608044) on default `10.7.0.1`
 - Wi-Fi on
-- A pairing file with Remote Pairing keys (iOS 26.4+). [iPASide 1.2.3+](https://github.com/pwnapplehat/iPASide) creates those keys over USB and places the file into EscapeOS. USB-only lockdown pairing files fail on iOS 26.4+.
+- A pairing file with Remote Pairing keys. [iPASide 1.2.3+](https://github.com/pwnapplehat/iPASide) creates those over USB and places the file into EscapeOS. USB-only lockdown pairing files fail on iOS 26.4+.
 
 ## Sideload
 
