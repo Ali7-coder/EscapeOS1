@@ -17,7 +17,7 @@ Do **not** set `UIDesignRequiresCompatibility` in `Info.plist` for release build
 2. Build with the iOS 26 SDK (deployment target iOS 18).
 3. Archive and export the IPA for distribution.
 
-EscapeOS uses SwiftUI `TabView` for the tab bar. A Mac with Xcode 26 can relink against the iOS 26 SDK for Liquid Glass; see above.
+EscapeOS uses a UIKit `UITabBarController` (`MainTabShell`) hosting SwiftUI screens. A Mac with Xcode 26 can relink against the iOS 26 SDK for Liquid Glass; see above.
 
 ### Local sideload (WSL Theos)
 

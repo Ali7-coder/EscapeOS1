@@ -35,7 +35,7 @@ On-device file browser and App Store app-data backup/restore for sideloaded iOS,
 | **App listing** | Lockdown loopback on `10.7.0.1:62078` (StikDebug 17.4–18 recipe). | Remote Pairing / RSD on `10.7.0.1:49152` (StikDebug 3.1+ / iOS 26.4 recipe). |
 | **Pairing file** | USB-trust (lockdown) keys are enough. iPASide still writes Remote Pairing keys into the same file. | Lockdown-only files fail. File must include Remote Pairing keys (`identifier`, Ed25519 `public_key` / `private_key`). |
 | **Container open (`bad_query`)** | Upstream: untested (“might also work on iOS 18”). Not hardware-tested here. | Upstream: **iOS 26.0–26.6.1 / 27.0b4**. |
-| **Hardware** | **Not tested here** (no iOS 18 device). | **Verified** iPhone 17, iOS 26.5.1 (list apps, browse container, iPASide auto-place pairing). |
+| **Hardware** | **Not tested here** (no iOS 18 device). | **Verified** iPhone 17, iOS 26.5.1 (list apps, browse, Select/copy-paste, backup, iPASide auto-place pairing). |
 
 Also required:
 
