@@ -1,4 +1,4 @@
-TARGET = iphone:clang:16.5:15.0
+TARGET = iphone:clang:16.5:18.0
 ARCHS = arm64
 INSTALL_TARGET_PROCESSES = EscapeOS
 
@@ -32,7 +32,8 @@ EscapeOS_FILES = \
 	EscapeOS/Engine/ZipWriter.swift \
 	EscapeOS/Engine/bad_query.c \
 	EscapeOS/Tunnel/TunnelContext.m \
-	EscapeOS/Tunnel/applist.m
+	EscapeOS/Tunnel/applist.m \
+	EscapeOS/Tunnel/heartbeat.m
 
 EscapeOS_SWIFT_BRIDGING_HEADER = EscapeOS/Engine/EscapeOS-Bridging-Header.h
 EscapeOS_CFLAGS = -IEscapeOS/Engine -IEscapeOS/Tunnel

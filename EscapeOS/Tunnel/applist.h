@@ -17,6 +17,8 @@ NSDictionary<NSString*, NSString*>* list_hidden_system_apps(struct AdapterHandle
 UIImage* getAppIcon(struct AdapterHandle *adapter, struct RsdHandshakeHandle *handshake, NSString* bundleID, NSString** error);
 
 NSDictionary *getAllAppsInfo(struct AdapterHandle *adapter, struct RsdHandshakeHandle *handshake, NSString **error);
+NSDictionary *getAllAppsInfoFromProvider(struct IdeviceProviderHandle *provider, NSString **error);
+UIImage *getAppIconFromProvider(struct IdeviceProviderHandle *provider, NSString *bundleID, NSString **error);
 id plist_to_objc_object(plist_t plist);
 
 #endif /* APPLIST_H */

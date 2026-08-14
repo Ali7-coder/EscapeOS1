@@ -5,7 +5,7 @@ enum ProductLimits {
     static let title = "Sandbox access with limits"
 
     static let body = """
-EscapeOS lists installed apps through LocalDevVPN and a pairing file, then opens another app's Data container: Documents, Library, and tmp.
+EscapeOS lists installed apps through LocalDevVPN and a pairing file (iOS 18 and iOS 26), then opens another app's Data container: Documents, Library, and tmp.
 
 You can browse, preview, edit, back up, and restore those files. Keychain items, App Groups, and system folders are not included.
 

@@ -28,8 +28,8 @@ enum AppDiscoveryError: LocalizedError {
     }
 }
 
-/// Discovers installed apps on-device via LocalDevVPN + RPPairing
-/// (InstallationProxy over RSD), the iOS 26.4+ StikDebug/SideStore path.
+/// Discovers installed apps on-device via LocalDevVPN + a pairing file.
+/// iOS 26.4+ uses RPPairing/RSD; iOS 18 falls back to lockdown over the same VPN.
 final class AppDiscovery {
 
     private let tunnel = TunnelContext.shared

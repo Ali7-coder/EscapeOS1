@@ -6,4 +6,4 @@ Description: On-device app-data browser, backup and restore. No Keychain. No jai
 Maintainer: iPASide
 Author: iPASide
 Section: Utilities
-Depends: firmware (>= 15.0)
+Depends: firmware (>= 18.0)

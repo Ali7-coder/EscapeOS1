@@ -60,7 +60,7 @@
 	<key>UISupportsDocumentBrowser</key>
 	<true/>
 	<key>MinimumOSVersion</key>
-	<string>15.0</string>
+	<string>18.0</string>
 	<key>CFBundleDisplayName</key>
 	<string>EscapeOS</string>
 	<key>UIDeviceFamily</key>

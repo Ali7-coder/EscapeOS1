@@ -6,13 +6,13 @@
 
 On-device file browser and App Store app-data backup/restore for sideloaded iOS, using a path-scoped container sandbox escape. No jailbreak. No Keychain.
 
-**Sideload the IPA with [iPASide](https://github.com/pwnapplehat/iPASide)** (Windows). iPASide creates this iPhone's pairing file and places `pairingFile.plist` after install.
+**Sideload the IPA with [iPASide](https://github.com/pwnapplehat/iPASide)** (Windows). iPASide creates the same kind of pairing file as [iLoader](https://iloader.site/docs/) and places `pairingFile.plist` after install. An iLoader file can be imported instead. After that, the PC is not required — EscapeOS talks to this iPhone over LocalDevVPN.
 
 </div>
 
 ## What it does
 
-- Lists installed user apps through LocalDevVPN + a Remote Pairing file (`10.7.0.1:49152`).
+- Lists installed user apps through LocalDevVPN + `pairingFile.plist` in Documents.
 - Browses an app Data container (`Documents`, `Library`, `tmp`) after consuming a `bad_query` sandbox extension for that container UUID.
 - Creates, previews, edits, and shares files in that container.
 - Exports a zip + `manifest.json` (SHA-256 per file) into Files → On My iPhone → EscapeOS → Backups, and restores that archive into the same app's current container.
@@ -23,26 +23,25 @@ On-device file browser and App Store app-data backup/restore for sideloaded iOS,
 - Other apps' App Groups
 - System paths (`/var/mobile`, parent container directories)
 - The app's signed `.app` bundle (Data container only)
+- iOS 15, 16, or 17 (the IPA will not install; `MinimumOSVersion` is 18.0)
 
 ## Requirements
 
-Working product (list apps + open another app's Data container) is **verified only on iPhone 17, iOS 26.5.1**.
+**Supported: iOS 18 and iOS 26 only.**
 
-The IPA's `MinimumOSVersion` is 15.0 so it can *install* on older iOS. That is not the same as the features working:
+| | iOS 18 | iOS 26 (26.4+) |
+|---|---|---|
+| **Use EscapeOS** | Phone + LocalDevVPN + Wi-Fi. No USB. | Same. |
+| **App listing** | Lockdown loopback on `10.7.0.1:62078` (StikDebug 17.4–18 recipe). | Remote Pairing / RSD on `10.7.0.1:49152` (StikDebug 3.1+ / iOS 26.4 recipe). |
+| **Pairing file** | USB-trust (lockdown) keys are enough. iPASide still writes Remote Pairing keys into the same file. | Lockdown-only files fail. File must include Remote Pairing keys (`identifier`, Ed25519 `public_key` / `private_key`). |
+| **Container open (`bad_query`)** | Upstream: untested (“might also work on iOS 18”). Not hardware-tested here. | Upstream: **iOS 26.0–26.6.1 / 27.0b4**. |
+| **Hardware** | **Not tested here** (no iOS 18 device). | **Verified** iPhone 17, iOS 26.5.1 (list apps, browse container, iPASide auto-place pairing). |
 
-| Piece | What the code actually needs |
-|---|---|
-| App listing | LocalDevVPN + **Remote Pairing** (`tunnel_create_rppairing` / RSD). That is the iOS **26.4+** StikDebug path. There is no lockdown / iOS 17.4–18 fallback in this tree. |
-| Container open | `bad_query` (containermanager sandbox extension). Upstream states **iOS 26.0–26.6.1 / 27.0b4**, and says iOS 18 is untested. |
-| LocalDevVPN | App Store lists iOS 14+, but EscapeOS only talks to it as the RSD loopback at `10.7.0.1:49152`. |
-
-iOS 15, 16, 17, and 18 are **not** a supported or hardware-tested product surface. An iPhone 8 Plus on iOS 16.7.15 is on this desk; EscapeOS was not installed there (free Apple ID already at 3 apps).
-
-Also required on the verified path:
+Also required:
 
 - [LocalDevVPN](https://apps.apple.com/app/id6755608044) on default `10.7.0.1`
 - Wi-Fi on
-- A pairing file with Remote Pairing keys. [iPASide 1.2.3+](https://github.com/pwnapplehat/iPASide) creates those over USB and places the file into EscapeOS. USB-only lockdown pairing files fail on iOS 26.4+.
+- Pairing file from [iPASide](https://github.com/pwnapplehat/iPASide) (Create keys / Place) or iLoader import. PC is only for minting and placing that file.
 
 ## Sideload
 
@@ -50,11 +49,11 @@ Also required on the verified path:
 2. Sideload `EscapeOS.ipa` from this repo's [Releases](https://github.com/pwnapplehat/EscapeOS/releases).
 3. Trust the developer profile on the iPhone.
 4. iPASide places `pairingFile.plist` automatically after sideload. To do it later: Settings → Pairing file → Place.
-5. Install LocalDevVPN, connect it, leave Wi-Fi on, then open EscapeOS.
+5. Unplug if you want. Install LocalDevVPN, connect it, leave Wi-Fi on, then open EscapeOS.
 
 ## Build (Theos / WSL)
 
-This tree is built with Theos against the iPhoneOS 16.5 SDK (Linux clang). That IPA is what was verified on hardware. A Mac with Xcode 26 can relink against the iOS 26 SDK for Liquid Glass; see `docs/BUILD.md`.
+This tree is built with Theos against the iPhoneOS 16.5 SDK, deployment target **iOS 18.0** (Linux clang). That IPA is what was verified on iOS 26.5.1. A Mac with Xcode 26 can relink against the iOS 26 SDK for Liquid Glass; see `docs/BUILD.md`.
 
 ```sh
 export THEOS=~/theos

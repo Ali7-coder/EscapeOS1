@@ -117,7 +117,7 @@ struct PairingSetupView: View {
                     SetupStep(number: 1, title: "Install LocalDevVPN",
                                text: "Install LocalDevVPN from the App Store. Leave Device IP / Tunnel IP on the defaults (10.7.0.1) and connect it, with Wi-Fi on.")
                     SetupStep(number: 2, title: "Get a pairing file",
-                               text: "On Windows, sideload EscapeOS with iPASide — it creates this iPhone's pairing file and places pairingFile.plist automatically. You can also import that file here. USB-only pairing files fail on iOS 26.4+; iPASide's Remote Pairing keys are what this screen needs.")
+                               text: "Sideload with iPASide on Windows. It creates the same kind of pairing file as iLoader (USB trust keys plus Remote Pairing keys) and places pairingFile.plist automatically. You can also import an iLoader file here. After that, unplug — EscapeOS talks to this iPhone over LocalDevVPN, not over USB. On iOS 26.4+ the Remote Pairing keys are required; on iOS 18 the USB-trust half is enough.")
                     SetupStep(number: 3, title: "Load apps",
                                text: "EscapeOS then lists your installed apps so you can browse or back up their data.")
                 }

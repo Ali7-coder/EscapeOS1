@@ -7,14 +7,13 @@
 //
 
 #import "TunnelContext.h"
+#import "applist.h"
+#import "heartbeat.h"
 #include <arpa/inet.h>
 #include <os/lock.h>
 
 #define RPPPAIRING_PORT 49152
 #define DEFAULT_TUNNEL_IP @"10.7.0.1"
-
-extern NSDictionary *getAllAppsInfo(struct AdapterHandle *adapter, struct RsdHandshakeHandle *handshake, NSString **error);
-extern UIImage *getAppIcon(struct AdapterHandle *adapter, struct RsdHandshakeHandle *handshake, NSString *bundleID, NSString **error);
 
 @implementation TunnelContext {
     os_unfair_lock _tunnelLock;
@@ -33,6 +32,7 @@ extern UIImage *getAppIcon(struct AdapterHandle *adapter, struct RsdHandshakeHan
     if (self) {
         _adapter = NULL;
         _handshake = NULL;
+        _provider = NULL;
         _tunnelConnecting = NO;
         _tunnelLock = OS_UNFAIR_LOCK_INIT;
         _tunnelSemaphore = NULL;
@@ -75,6 +75,11 @@ extern UIImage *getAppIcon(struct AdapterHandle *adapter, struct RsdHandshakeHan
 }
 
 - (void)_freeTunnelHandles {
+    if (_provider) {
+        globalHeartbeatToken++;
+        idevice_provider_free(_provider);
+        _provider = NULL;
+    }
     if (_handshake) {
         rsd_handshake_free(_handshake);
         _handshake = NULL;
@@ -109,23 +114,30 @@ extern UIImage *getAppIcon(struct AdapterHandle *adapter, struct RsdHandshakeHan
     return pf;
 }
 
-- (BOOL)_createTunnel:(NSError **)error {
+- (BOOL)_fillSockaddr:(struct sockaddr_in *)addr port:(uint16_t)port error:(NSError **)error {
+    memset(addr, 0, sizeof(*addr));
+    addr->sin_family = AF_INET;
+    addr->sin_port = htons(port);
+    NSString *deviceIP = [self _targetIP];
+    if (inet_pton(AF_INET, deviceIP.UTF8String, &addr->sin_addr) != 1) {
+        if (error) *error = [self _error:[NSString stringWithFormat:@"Failed to parse target IP address: %@", deviceIP] code:-18];
+        return NO;
+    }
+    return YES;
+}
+
+- (BOOL)_createRpTunnel:(NSError **)error {
     struct RpPairingFileHandle *pairingFile = [self _loadPairingFile:error];
     if (!pairingFile) {
         return NO;
     }
 
     struct sockaddr_in addr;
-    memset(&addr, 0, sizeof(addr));
-    addr.sin_family = AF_INET;
-    addr.sin_port = htons(RPPPAIRING_PORT);
-    NSString *deviceIP = [self _targetIP];
-    NSLog(@"[EscapeOS] RPPairing tunnel target %@:%d", deviceIP, RPPPAIRING_PORT);
-    if (inet_pton(AF_INET, deviceIP.UTF8String, &addr.sin_addr) != 1) {
+    if (![self _fillSockaddr:&addr port:RPPPAIRING_PORT error:error]) {
         rp_pairing_file_free(pairingFile);
-        if (error) *error = [self _error:[NSString stringWithFormat:@"Failed to parse target IP address: %@", deviceIP] code:-18];
         return NO;
     }
+    NSLog(@"[EscapeOS] RPPairing tunnel target %@:%d", [self _targetIP], RPPPAIRING_PORT);
 
     struct AdapterHandle *adapter = NULL;
     struct RsdHandshakeHandle *handshake = NULL;
@@ -162,6 +174,79 @@ extern UIImage *getAppIcon(struct AdapterHandle *adapter, struct RsdHandshakeHan
     return YES;
 }
 
+- (BOOL)_createClassicTunnel:(NSError **)error {
+    NSString *path = self._pairingFileURL.path;
+    if (![NSFileManager.defaultManager fileExistsAtPath:path]) {
+        if (error) *error = [self _error:@"Pairing file not found. Sideload EscapeOS with iPASide so it can place pairingFile.plist, or import one here." code:-17];
+        return NO;
+    }
+
+    struct IdevicePairingFile *pf = NULL;
+    struct IdeviceFfiError *err = idevice_pairing_file_read(path.fileSystemRepresentation, &pf);
+    if (err) {
+        if (error) *error = [self _error:[NSString stringWithFormat:@"Failed to read pairing file: %s", err->message] code:err->code];
+        idevice_error_free(err);
+        return NO;
+    }
+
+    NSLog(@"[EscapeOS] lockdown loopback target %@:%d", [self _targetIP], LOCKDOWN_PORT);
+
+    __block IdeviceProviderHandle *provider = NULL;
+    __block int hbCode = -1;
+    __block NSString *hbMsg = nil;
+    dispatch_semaphore_t firstBeat = dispatch_semaphore_create(0);
+    int token = ++globalHeartbeatToken;
+
+    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH, 0), ^{
+        startHeartbeat(pf, &provider, token, ^(int result, const char *message) {
+            hbCode = result;
+            hbMsg = message ? @(message) : nil;
+            dispatch_semaphore_signal(firstBeat);
+        });
+    });
+
+    if (dispatch_semaphore_wait(firstBeat, dispatch_time(DISPATCH_TIME_NOW, (uint64_t)(20 * NSEC_PER_SEC))) != 0) {
+        globalHeartbeatToken++;
+        if (error) *error = [self _error:@"Timed out on the LocalDevVPN lockdown tunnel. Enable LocalDevVPN, stay on Wi-Fi, and use a pairing file from iPASide or iLoader." code:-9];
+        return NO;
+    }
+    if (hbCode != 0 || provider == NULL) {
+        if (error) *error = [self _error:(hbMsg ?: @"Lockdown tunnel over LocalDevVPN failed.") code:hbCode];
+        return NO;
+    }
+
+    if (_handshake) {
+        rsd_handshake_free(_handshake);
+        _handshake = NULL;
+    }
+    if (_adapter) {
+        adapter_free(_adapter);
+        _adapter = NULL;
+    }
+    if (_provider && _provider != provider) {
+        idevice_provider_free(_provider);
+    }
+    _provider = provider;
+    return YES;
+}
+
+- (BOOL)_createTunnel:(NSError **)error {
+    NSError *rpErr = nil;
+    if ([self _createRpTunnel:&rpErr]) {
+        return YES;
+    }
+    NSError *classicErr = nil;
+    if ([self _createClassicTunnel:&classicErr]) {
+        return YES;
+    }
+    NSString *rpText = rpErr.localizedDescription ?: @"Remote Pairing did not connect";
+    NSString *classicText = classicErr.localizedDescription ?: @"lockdown loopback did not connect";
+    if (error) {
+        *error = [self _error:[NSString stringWithFormat:@"%@ (iOS 26.4+ path). %@ (iOS 18 path). Enable LocalDevVPN on 10.7.0.1, stay on Wi-Fi. The PC is not needed after the pairing file is placed.", rpText, classicText] code:-1];
+    }
+    return NO;
+}
+
 - (BOOL)startHeartbeat:(NSError **)error {
     os_unfair_lock_lock(&_tunnelLock);
     if (_tunnelConnecting) {
@@ -186,7 +271,7 @@ extern UIImage *getAppIcon(struct AdapterHandle *adapter, struct RsdHandshakeHan
         if (done) return;
         done = YES;
         if (!ok) {
-            blockErr = createErr ?: [self _error:@"Failed to create RPPairing tunnel." code:-1];
+            blockErr = createErr ?: [self _error:@"Failed to connect over LocalDevVPN." code:-1];
             self->_lastTunnelError = blockErr;
         } else {
             self->_lastTunnelError = nil;
@@ -194,7 +279,7 @@ extern UIImage *getAppIcon(struct AdapterHandle *adapter, struct RsdHandshakeHan
         dispatch_semaphore_signal(sem);
     });
 
-    intptr_t timedOut = dispatch_semaphore_wait(sem, dispatch_time(DISPATCH_TIME_NOW, (uint64_t)(20 * NSEC_PER_SEC)));
+    intptr_t timedOut = dispatch_semaphore_wait(sem, dispatch_time(DISPATCH_TIME_NOW, (uint64_t)(45 * NSEC_PER_SEC)));
     if (timedOut && !done) {
         done = YES;
         blockErr = [self _error:@"Timed out connecting to the local tunnel. Enable LocalDevVPN with its default Device/Tunnel IPs (10.7.0.1), stay on Wi-Fi, and use a pairing file from iPASide." code:-9];
@@ -212,38 +297,56 @@ extern UIImage *getAppIcon(struct AdapterHandle *adapter, struct RsdHandshakeHan
 }
 
 - (BOOL)ensureHeartbeatWithError:(NSError **)error {
-    if (_adapter && _handshake) {
+    if ((_adapter && _handshake) || _provider) {
         return YES;
     }
     return [self startHeartbeat:error];
 }
 
 - (NSDictionary<NSString *, NSDictionary *> *)getAllAppsInfoWithError:(NSError **)error {
-    if (!_adapter || !_handshake) {
-        if (error) *error = [self _error:@"Tunnel not connected. Start heartbeat first." code:-1];
-        return nil;
+    if (_adapter && _handshake) {
+        NSString *errStr = nil;
+        NSDictionary *apps = getAllAppsInfo(_adapter, _handshake, &errStr);
+        if (errStr) {
+            if (error) *error = [self _error:errStr code:-17];
+            return nil;
+        }
+        return (NSDictionary<NSString *, NSDictionary *> *)apps;
     }
-    NSString *errStr = nil;
-    NSDictionary *apps = getAllAppsInfo(_adapter, _handshake, &errStr);
-    if (errStr) {
-        if (error) *error = [self _error:errStr code:-17];
-        return nil;
+    if (_provider) {
+        NSString *errStr = nil;
+        NSDictionary *apps = getAllAppsInfoFromProvider(_provider, &errStr);
+        if (errStr) {
+            if (error) *error = [self _error:errStr code:-17];
+            return nil;
+        }
+        return (NSDictionary<NSString *, NSDictionary *> *)apps;
     }
-    return (NSDictionary<NSString *, NSDictionary *> *)apps;
+    if (error) *error = [self _error:@"Tunnel not connected. Start heartbeat first." code:-1];
+    return nil;
 }
 
 - (UIImage *)getAppIconWithBundleId:(NSString *)bundleId error:(NSError **)error {
-    if (!_adapter || !_handshake) {
-        if (error) *error = [self _error:@"Tunnel not connected." code:-1];
-        return nil;
+    if (_adapter && _handshake) {
+        NSString *errStr = nil;
+        UIImage *icon = getAppIcon(_adapter, _handshake, bundleId, &errStr);
+        if (errStr) {
+            if (error) *error = [self _error:errStr code:-17];
+            return nil;
+        }
+        return icon;
     }
-    NSString *errStr = nil;
-    UIImage *icon = getAppIcon(_adapter, _handshake, bundleId, &errStr);
-    if (errStr) {
-        if (error) *error = [self _error:errStr code:-17];
-        return nil;
+    if (_provider) {
+        NSString *errStr = nil;
+        UIImage *icon = getAppIconFromProvider(_provider, bundleId, &errStr);
+        if (errStr) {
+            if (error) *error = [self _error:errStr code:-17];
+            return nil;
+        }
+        return icon;
     }
-    return icon;
+    if (error) *error = [self _error:@"Tunnel not connected." code:-1];
+    return nil;
 }
 
 - (void)dealloc {

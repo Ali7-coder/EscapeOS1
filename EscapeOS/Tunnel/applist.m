@@ -241,6 +241,62 @@ NSDictionary *getAllAppsInfo(struct AdapterHandle *adapter, struct RsdHandshakeH
     return result;
 }
 
+NSDictionary *getAllAppsInfoFromProvider(struct IdeviceProviderHandle *provider, NSString **error) {
+    InstallationProxyClientHandle *client = NULL;
+    struct IdeviceFfiError *err = installation_proxy_connect(provider, &client);
+    if (err) {
+        *error = [NSString stringWithFormat:@"Failed to connect to installation proxy: %s", err->message];
+        idevice_error_free(err);
+        return nil;
+    }
+
+    void *apps = NULL;
+    size_t count = 0;
+    err = installation_proxy_get_apps(client, NULL, NULL, 0, &apps, &count);
+    if (err) {
+        installation_proxy_client_free(client);
+        *error = [NSString stringWithFormat:@"Failed to get apps: %s", err->message];
+        idevice_error_free(err);
+        return nil;
+    }
+
+    NSMutableDictionary *result = [NSMutableDictionary dictionaryWithCapacity:count];
+    for (size_t i = 0; i < count; i++) {
+        plist_t app = ((plist_t *)apps)[i];
+        NSDictionary *appInfo = plist_to_objc_object(app);
+        result[appInfo[@"CFBundleIdentifier"]] = appInfo;
+    }
+
+    installation_proxy_client_free(client);
+    return result;
+}
+
+UIImage *getAppIconFromProvider(struct IdeviceProviderHandle *provider, NSString *bundleID, NSString **error) {
+    SpringBoardServicesClientHandle *client = NULL;
+    struct IdeviceFfiError *err = springboard_services_connect(provider, &client);
+    if (err) {
+        *error = [NSString stringWithFormat:@"Failed to connect to SpringBoard Services: %s", err->message];
+        idevice_error_free(err);
+        return nil;
+    }
+
+    void *pngData = NULL;
+    size_t dataLen = 0;
+    err = springboard_services_get_icon(client, [bundleID UTF8String], &pngData, &dataLen);
+    if (err) {
+        springboard_services_free(client);
+        *error = [NSString stringWithFormat:@"Failed to get app icon: %s", err->message];
+        idevice_error_free(err);
+        return nil;
+    }
+
+    NSData *data = [NSData dataWithBytes:pngData length:dataLen];
+    free(pngData);
+    UIImage *icon = [UIImage imageWithData:data];
+    springboard_services_free(client);
+    return icon;
+}
+
 id plist_to_objc_object(plist_t plist) {
     switch (plist_get_node_type(plist)) {
         case PLIST_NONE: {

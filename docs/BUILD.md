@@ -14,7 +14,7 @@ Do **not** set `UIDesignRequiresCompatibility` in `Info.plist` for release build
 ### Public release (recommended)
 
 1. Open the project on a Mac with **Xcode 26**.
-2. Build with the iOS 26 SDK (deployment target can remain iOS 15+).
+2. Build with the iOS 26 SDK (deployment target iOS 18).
 3. Archive and export the IPA for distribution.
 
 EscapeOS uses SwiftUI `TabView` for the tab bar. A Mac with Xcode 26 can relink against the iOS 26 SDK for Liquid Glass; see above.
@@ -27,7 +27,7 @@ cd ~/apps/EscapeOS
 make clean package
 ```
 
-The Makefile pins `iphone:clang:16.5:15.0` because newer Apple SDKs require Xcode’s Apple Clang and fail under Linux clang.
+The Makefile pins `iphone:clang:16.5:18.0` because newer Apple SDKs require Xcode’s Apple Clang and fail under Linux clang.
 
 `EscapeOS/Tunnel/libidevice_ffi.a` is not in git (≈93 MB). Download it from the same GitHub Release as the IPA, or rebuild `jkcoxson/idevice` for `aarch64-apple-ios`, and place it at `EscapeOS/Tunnel/libidevice_ffi.a` before `make package`.
 
