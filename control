@@ -1,0 +1,9 @@
+Package: com.ipaside.escapeos
+Name: EscapeOS
+Version: 0.1.0
+Architecture: iphoneos-arm
+Description: On-device app-data browser, backup and restore. No Keychain. No jailbreak.
+Maintainer: iPASide
+Author: iPASide
+Section: Utilities
+Depends: firmware (>= 15.0)
