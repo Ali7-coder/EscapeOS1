@@ -105,6 +105,18 @@ struct AppListView: View {
                 }
                 .padding(.vertical, 4)
             }
+            .contextMenu {
+                Button {
+                    FileClipboard.copyText(app.bundleIdentifier)
+                } label: {
+                    Label("Copy Bundle ID", systemImage: "doc.on.doc")
+                }
+                Button {
+                    FileClipboard.copyText(app.name)
+                } label: {
+                    Label("Copy Name", systemImage: "character.cursor.ibeam")
+                }
+            }
         }
     }
 }

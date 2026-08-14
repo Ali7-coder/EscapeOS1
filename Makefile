@@ -26,6 +26,7 @@ EscapeOS_FILES = \
 	EscapeOS/Engine/RestoreService.swift \
 	EscapeOS/Engine/SandboxEscape.swift \
 	EscapeOS/Engine/FileKind.swift \
+	EscapeOS/Engine/FileClipboard.swift \
 	EscapeOS/Engine/FileService.swift \
 	EscapeOS/Engine/AppDiscovery.swift \
 	EscapeOS/Engine/BackupService.swift \

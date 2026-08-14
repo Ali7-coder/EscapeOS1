@@ -7,6 +7,7 @@ struct FileBrowserView: View {
     let app: InstalledApp
 
     @StateObject private var vm: FileBrowserViewModel
+    @ObservedObject private var clipboard = FileClipboard.shared
     @State private var createKind: CreateKind?
     @State private var createName = ""
     @State private var renameItem: FileItem?
@@ -54,7 +55,27 @@ struct FileBrowserView: View {
                     if vm.canGoUp {
                         Button("Up") { vm.goUp() }
                     }
+                    if !clipboard.isEmpty {
+                        Button {
+                            vm.paste()
+                        } label: {
+                            Image(systemName: clipboard.payload?.mode == .cut ? "scissors" : "doc.on.clipboard")
+                        }
+                        .disabled(vm.isPasting)
+                        .accessibilityLabel(clipboard.pasteTitle)
+                    }
                     Menu {
+                        if !clipboard.isEmpty {
+                            Button {
+                                vm.paste()
+                            } label: {
+                                Label(clipboard.pasteTitle, systemImage: "doc.on.clipboard")
+                            }
+                            .disabled(vm.isPasting)
+                            Button("Clear Clipboard", role: .destructive) {
+                                clipboard.clear()
+                            }
+                        }
                         Button {
                             createName = "New File.txt"
                             createKind = .file
@@ -227,6 +248,21 @@ struct FileBrowserView: View {
             .disabled(vm.isExporting)
         }
         Button {
+            FileClipboard.shared.copy([item], containerPath: app.containerPath)
+        } label: {
+            Label("Copy", systemImage: "doc.on.doc")
+        }
+        Button {
+            FileClipboard.shared.cut([item], containerPath: app.containerPath)
+        } label: {
+            Label("Cut", systemImage: "scissors")
+        }
+        Button {
+            FileClipboard.copyText(item.path)
+        } label: {
+            Label("Copy Path", systemImage: "list.clipboard")
+        }
+        Button {
             vm.duplicate(item: item)
         } label: {
             Label("Duplicate", systemImage: "plus.square.on.square")
@@ -325,6 +361,7 @@ final class FileBrowserViewModel: ObservableObject {
     @Published var isExporting = false
     @Published var exportError: IdentifiedError?
     @Published var operationError: IdentifiedError?
+    @Published var isPasting = false
 
     let app: InstalledApp
     private let escape = SandboxEscape()
@@ -409,6 +446,96 @@ final class FileBrowserViewModel: ObservableObject {
         mutate {
             try self.files.deleteItem(at: item.path)
         }
+    }
+
+    func paste() {
+        guard let clip = FileClipboard.shared.payload, !clip.items.isEmpty else { return }
+        isPasting = true
+        let destDir = currentPath
+        let destContainer = app.containerPath
+        DispatchQueue.global(qos: .userInitiated).async {
+            do {
+                try self.paste(clip, into: destDir, destContainer: destContainer)
+                DispatchQueue.main.async {
+                    self.isPasting = false
+                    if clip.mode == .cut {
+                        FileClipboard.shared.clear()
+                    }
+                    self.open(self.currentPath)
+                }
+            } catch {
+                DispatchQueue.main.async {
+                    self.isPasting = false
+                    self.operationError = IdentifiedError(message: error.localizedDescription)
+                }
+            }
+        }
+    }
+
+    private func paste(_ clip: FileClipboard.Payload, into destDir: String, destContainer: String) throws {
+        for item in clip.items {
+            if Self.wouldNest(source: item.path, inside: destDir) {
+                throw FileServiceError.operationFailed("Can't paste a folder into itself.")
+            }
+        }
+        if clip.containerPath == destContainer {
+            try escape.withHandle(for: destContainer) { _ in
+                try self.transferSameContainer(clip, destDir: destDir)
+            }
+            return
+        }
+
+        let staging = FileManager.default.temporaryDirectory
+            .appendingPathComponent("escapeos-clip-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: staging, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: staging) }
+
+        try escape.withHandle(for: clip.containerPath) { _ in
+            for item in clip.items {
+                try self.files.copyItem(
+                    at: item.path,
+                    to: staging.appendingPathComponent(item.name).path
+                )
+            }
+        }
+        try escape.withHandle(for: destContainer) { _ in
+            for item in clip.items {
+                let dest = self.files.uniqueDestination(in: destDir, preferredName: item.name)
+                try self.files.copyItem(
+                    at: staging.appendingPathComponent(item.name).path,
+                    to: dest
+                )
+            }
+        }
+        if clip.mode == .cut {
+            try escape.withHandle(for: clip.containerPath) { _ in
+                for item in clip.items {
+                    try self.files.deleteItem(at: item.path)
+                }
+            }
+        }
+    }
+
+    private func transferSameContainer(_ clip: FileClipboard.Payload, destDir: String) throws {
+        let destNorm = (destDir as NSString).standardizingPath
+        for item in clip.items {
+            let parent = ((item.path as NSString).deletingLastPathComponent as NSString).standardizingPath
+            if clip.mode == .cut && parent == destNorm {
+                continue
+            }
+            let dest = files.uniqueDestination(in: destDir, preferredName: item.name)
+            if clip.mode == .cut {
+                try files.moveItem(at: item.path, to: dest)
+            } else {
+                try files.copyItem(at: item.path, to: dest)
+            }
+        }
+    }
+
+    private static func wouldNest(source: String, inside destDir: String) -> Bool {
+        let src = (source as NSString).standardizingPath
+        let dest = (destDir as NSString).standardizingPath
+        return dest == src || dest.hasPrefix(src + "/")
     }
 
     func duplicate(item: FileItem) {

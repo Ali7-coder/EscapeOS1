@@ -24,6 +24,34 @@ struct AppDetailView: View {
                             Text("Version \(version)").font(.caption2).foregroundColor(.secondary)
                         }
                     }
+                    Spacer()
+                }
+                .contextMenu {
+                    Button {
+                        FileClipboard.copyText(app.bundleIdentifier)
+                    } label: {
+                        Label("Copy Bundle ID", systemImage: "doc.on.doc")
+                    }
+                    Button {
+                        FileClipboard.copyText(app.name)
+                    } label: {
+                        Label("Copy Name", systemImage: "character.cursor.ibeam")
+                    }
+                    if !app.containerPath.isEmpty {
+                        Button {
+                            FileClipboard.copyText(app.containerPath)
+                        } label: {
+                            Label("Copy Container Path", systemImage: "folder")
+                        }
+                    }
+                }
+            }
+
+            Section {
+                Button {
+                    FileClipboard.copyText(app.bundleIdentifier)
+                } label: {
+                    Label("Copy Bundle ID", systemImage: "doc.on.doc")
                 }
             }
 

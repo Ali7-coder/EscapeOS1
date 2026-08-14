@@ -19,6 +19,11 @@ struct FilePropertiesView: View {
                     Text(item.path)
                         .font(.footnote)
                         .textSelection(.enabled)
+                    Button {
+                        FileClipboard.copyText(item.path)
+                    } label: {
+                        Label("Copy Path", systemImage: "doc.on.doc")
+                    }
                 }
                 Section(header: Text("Details")) {
                     row("Kind", kindLabel)
@@ -40,6 +45,11 @@ struct FilePropertiesView: View {
                             Text(hash)
                                 .font(.system(size: 12, design: .monospaced))
                                 .textSelection(.enabled)
+                            Button {
+                                FileClipboard.copyText(hash)
+                            } label: {
+                                Label("Copy SHA-256", systemImage: "doc.on.doc")
+                            }
                         } else if let error = vm.errorMessage {
                             Text(error).foregroundColor(.red)
                         }
