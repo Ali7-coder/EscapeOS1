@@ -7,8 +7,9 @@ from pathlib import Path
 from PIL import Image
 
 ROOT = Path(__file__).resolve().parents[1]
-MASTER = Path("/tmp/escapeos-icon-master.png")
+MASTER = ROOT / "assets" / "EscapeOS-icon-master.png"
 OUT = ROOT / "Resources"
+BRAND = ROOT / "docs" / "brand" / "icon.png"
 
 SIZES = {
     "AppIcon29x29.png": 29,
@@ -42,6 +43,10 @@ def main() -> None:
         target = OUT / name
         img.save(target, format="PNG", optimize=True)
         print(f"wrote {name} ({px}px, {target.stat().st_size} bytes)")
+    BRAND.parent.mkdir(parents=True, exist_ok=True)
+    brand = master.resize((180, 180), Image.Resampling.LANCZOS)
+    brand.save(BRAND, format="PNG", optimize=True)
+    print(f"wrote {BRAND.relative_to(ROOT)} (180px, {BRAND.stat().st_size} bytes)")
 
 
 if __name__ == "__main__":

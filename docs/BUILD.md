@@ -38,8 +38,7 @@ After install, place `pairingFile.plist` again from iPASide Settings → Pairing
 Regenerate PNGs from the master artwork:
 
 ```bash
-cp /path/to/EscapeOS-icon-master.png /tmp/escapeos-icon-master.png
 python3 tools/generate_icons.py
 ```
 
-Master icon: `assets/EscapeOS-icon-master.png` (teal escape/sandbox motif).
+Master icon: `assets/EscapeOS-icon-master.png` (teal escape/sandbox motif, transparent corners).
