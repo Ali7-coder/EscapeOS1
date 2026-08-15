@@ -31,7 +31,7 @@ The Makefile pins `iphone:clang:16.5:18.0` because newer Apple SDKs require Xcod
 
 `EscapeOS/Tunnel/libidevice_ffi.a` is not in git (≈93 MB). Download it from the same GitHub Release as the IPA, or rebuild `jkcoxson/idevice` for `aarch64-apple-ios`, and place it at `EscapeOS/Tunnel/libidevice_ffi.a` before `make package`.
 
-After install, place `pairingFile.plist` again from iPASide Settings → Pairing file → Place (or Files sharing / House Arrest).
+After install, place `pairingFile.plist` again from the PC: iPASide Settings → Pairing file → Place (House Arrest), or share the file in Files.
 
 ### App icon
 
