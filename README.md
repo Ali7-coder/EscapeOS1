@@ -51,6 +51,17 @@ Also required:
 4. iPASide places `pairingFile.plist` automatically after sideload. To do it later: Settings → Pairing file → Place.
 5. Unplug if you want. Install LocalDevVPN, connect it, leave Wi-Fi on, then open EscapeOS.
 
+## Why a pairing file (not House Arrest)
+
+House Arrest is a **PC → phone** lockdown service. iPASide uses it to write `pairingFile.plist` into EscapeOS's Documents (same path as Files sharing). That is how the pairing file *arrives*. It is not a way for EscapeOS, running on the iPhone, to see other apps.
+
+A sideloaded app cannot enumerate other apps or their Data containers by itself (`LSApplicationWorkspace` and listing `/var/mobile/Containers/…` stay blocked). EscapeOS therefore:
+
+1. Uses the pairing file over LocalDevVPN to talk to `installation_proxy` as a trusted host, which is what fills the app list and each Data-container path.
+2. Opens that container with `bad_query` so Documents, Library, and tmp are all reachable. House Arrest's usual `VendDocuments` is Documents-only, and only for apps that enabled file sharing.
+
+Without the pairing file there is no app list and no container paths to open. Keep using iPASide **Place** (or import an iLoader file). The PC is not needed after that.
+
 ## Build (Theos / WSL)
 
 This tree is built with Theos against the iPhoneOS 16.5 SDK, deployment target **iOS 18.0** (Linux clang). That IPA is what was verified on iOS 26.5.1. A Mac with Xcode 26 can relink against the iOS 26 SDK for Liquid Glass; see `docs/BUILD.md`.
@@ -62,7 +73,7 @@ make package FINALPACKAGE=1
 # staged app: .theos/_/Applications/EscapeOS.app
 ```
 
-After reinstall, place `pairingFile.plist` again: iPASide Settings → Pairing file → Place, Files sharing, or House Arrest.
+After reinstall, place `pairingFile.plist` again from the PC: iPASide Settings → Pairing file → Place (House Arrest), or share the file in Files.
 
 ## License
 
