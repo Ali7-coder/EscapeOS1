@@ -25,17 +25,29 @@ On-device file browser and App Store app-data backup/restore for sideloaded iOS,
 - The app's signed `.app` bundle (Data container only)
 - iOS 15, 16, or 17 (the IPA will not install; `MinimumOSVersion` is 18.0)
 
+## Compatibility
+
+The IPA will install on iOS 18.0 or later (`MinimumOSVersion` 18.0). **Opening another app's Data container** uses [bad_query](https://github.com/forcequitOS/bad_query), whose upstream range is **iOS 26.0 through 26.6.1**, plus **iOS 27.0 beta 4** only. Builds outside that list are unsupported, not assumed.
+
+| System | `bad_query` (browse / backup) | App listing (LocalDevVPN) | Hardware |
+|---|---|---|---|
+| iOS 18.0 – 18.x | Untested upstream (“might also work”). | In this build: lockdown loopback `10.7.0.1:62078`. | **Not tested here** |
+| iOS 26.0 – 26.3 | Upstream: yes (26.0–26.6.1). | Remote Pairing listing is a **26.4+** recipe; lockdown on these builds is untested. | **Not tested here** |
+| iOS 26.4 – 26.6.1 | Upstream: yes. | Remote Pairing / RSD `10.7.0.1:49152`. | **Verified** 26.5.1 (iPhone 17: list, browse, Select/copy-paste, backup, pairing place) |
+| iOS 26.7 and later | **Unsupported** (outside bad_query). | — | — |
+| iOS 27.0 beta 4 | Upstream: yes. | Untested here. | **Not tested here** |
+| iOS 27.0 beta 5 and later | **Unsupported** (outside bad_query). | — | — |
+
+iOS 15, 16, and 17 cannot install this IPA.
+
 ## Requirements
 
-**Supported: iOS 18 and iOS 26 only.**
+On a compatible build above: phone + LocalDevVPN + Wi-Fi. No USB while using the app.
 
-| | iOS 18 | iOS 26 (26.4+) |
+| | iOS 18 | iOS 26.4 – 26.6.1 |
 |---|---|---|
-| **Use EscapeOS** | Phone + LocalDevVPN + Wi-Fi. No USB. | Same. |
 | **App listing** | Lockdown loopback on `10.7.0.1:62078` (StikDebug 17.4–18 recipe). | Remote Pairing / RSD on `10.7.0.1:49152` (StikDebug 3.1+ / iOS 26.4 recipe). |
 | **Pairing file** | USB-trust (lockdown) keys are enough. iPASide still writes Remote Pairing keys into the same file. | Lockdown-only files fail. File must include Remote Pairing keys (`identifier`, Ed25519 `public_key` / `private_key`). |
-| **Container open (`bad_query`)** | Upstream: untested (“might also work on iOS 18”). Not hardware-tested here. | Upstream: **iOS 26.0–26.6.1 / 27.0b4**. |
-| **Hardware** | **Not tested here** (no iOS 18 device). | **Verified** iPhone 17, iOS 26.5.1 (list apps, browse, Select/copy-paste, backup, iPASide auto-place pairing). |
 
 Also required:
 

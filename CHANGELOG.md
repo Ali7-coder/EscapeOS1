@@ -8,5 +8,5 @@ First public sideload IPA.
 - Path-scoped Data-container browse, edit, share, backup zip + restore. Select for multi-select Copy/Cut/Paste/Duplicate/Delete; Copy Path, Copy Bundle ID, and Copy SHA-256.
 - Pairing setup names EscapeOS and iPASide. iLoader is not required; iPASide writes the same merged pairing file as iLoader and places `pairingFile.plist`.
 - README shows the app icon with transparent corners (no black frame).
-- Supported iOS: **18 and 26 only** (`MinimumOSVersion` 18.0). Hardware-verified: iPhone 17, iOS 26.5.1. iOS 18 listing path is in code (StikDebug recipe); `bad_query` on 18 is untested upstream. Container access on 26 is upstream 26.0–26.6.1 / 27.0b4.
+- Supported container access follows [bad_query](https://github.com/forcequitOS/bad_query): **iOS 26.0–26.6.1** and **iOS 27.0 beta 4**. Later 26.x / 27.x builds are unsupported. IPA `MinimumOSVersion` is 18.0; iOS 18 listing is in code, untested. Hardware-verified: iPhone 17, **iOS 26.5.1**.
 - Verified on iPhone 17, iOS 26.5.1, with iPASide placing the pairing file after install (list, browse, Select/copy-paste, backup).
