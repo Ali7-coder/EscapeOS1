@@ -20,7 +20,7 @@ struct FilePropertiesView: View {
                         .font(.footnote)
                         .textSelection(.enabled)
                     Button {
-                        FileClipboard.copyText(item.path)
+                        FileClipboard.copyText(item.path, confirmation: "Copied Path")
                     } label: {
                         Label("Copy Path", systemImage: "doc.on.doc")
                     }
@@ -46,7 +46,7 @@ struct FilePropertiesView: View {
                                 .font(.system(size: 12, design: .monospaced))
                                 .textSelection(.enabled)
                             Button {
-                                FileClipboard.copyText(hash)
+                                FileClipboard.copyText(hash, confirmation: "Copied SHA-256")
                             } label: {
                                 Label("Copy SHA-256", systemImage: "doc.on.doc")
                             }

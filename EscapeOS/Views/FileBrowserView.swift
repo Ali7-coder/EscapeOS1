@@ -292,7 +292,10 @@ struct FileBrowserView: View {
                     }
                     .disabled(selectedItems.isEmpty)
                     Button {
-                        FileClipboard.copyText(selectedItems.map(\.path).joined(separator: "\n"))
+                        FileClipboard.copyText(
+                            selectedItems.map(\.path).joined(separator: "\n"),
+                            confirmation: selectedItems.count == 1 ? "Copied Path" : "Copied Paths"
+                        )
                     } label: {
                         Label(selectedItems.count == 1 ? "Copy Path" : "Copy Paths", systemImage: "list.clipboard")
                     }
@@ -423,7 +426,7 @@ struct FileBrowserView: View {
             Label("Cut", systemImage: "scissors")
         }
         Button {
-            FileClipboard.copyText(item.path)
+            FileClipboard.copyText(item.path, confirmation: "Copied Path")
         } label: {
             Label("Copy Path", systemImage: "list.clipboard")
         }

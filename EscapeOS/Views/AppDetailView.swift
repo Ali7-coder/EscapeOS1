@@ -28,18 +28,18 @@ struct AppDetailView: View {
                 }
                 .contextMenu {
                     Button {
-                        FileClipboard.copyText(app.bundleIdentifier)
+                        FileClipboard.copyText(app.bundleIdentifier, confirmation: "Copied Bundle ID")
                     } label: {
                         Label("Copy Bundle ID", systemImage: "doc.on.doc")
                     }
                     Button {
-                        FileClipboard.copyText(app.name)
+                        FileClipboard.copyText(app.name, confirmation: "Copied Name")
                     } label: {
                         Label("Copy Name", systemImage: "character.cursor.ibeam")
                     }
                     if !app.containerPath.isEmpty {
                         Button {
-                            FileClipboard.copyText(app.containerPath)
+                            FileClipboard.copyText(app.containerPath, confirmation: "Copied Path")
                         } label: {
                             Label("Copy Container Path", systemImage: "folder")
                         }
@@ -49,7 +49,7 @@ struct AppDetailView: View {
 
             Section {
                 Button {
-                    FileClipboard.copyText(app.bundleIdentifier)
+                    FileClipboard.copyText(app.bundleIdentifier, confirmation: "Copied Bundle ID")
                 } label: {
                     Label("Copy Bundle ID", systemImage: "doc.on.doc")
                 }

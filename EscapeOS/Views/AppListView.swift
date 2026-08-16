@@ -86,37 +86,111 @@ final class AppListViewModel: ObservableObject {
     }
 }
 
-/// Scrollable list of installed user apps.
+/// Scrollable list of installed user apps, with search and A–Z jump index.
 struct AppListView: View {
     @ObservedObject var viewModel: AppListViewModel
+    @State private var searchText = ""
 
     var body: some View {
-        List(viewModel.apps) { app in
-            NavigationLink(destination: AppDetailView(app: app, viewModel: viewModel)) {
-                HStack(spacing: 12) {
-                    AppIconView(icon: viewModel.icons[app.bundleIdentifier])
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(app.name)
-                            .font(.body)
-                        Text(app.bundleIdentifier)
-                            .font(.caption)
-                            .foregroundColor(.secondary)
+        let visible = filteredApps
+        ScrollViewReader { proxy in
+            List {
+                if visible.isEmpty {
+                    Text("No apps match “\(searchText.trimmingCharacters(in: .whitespacesAndNewlines))”.")
+                        .foregroundColor(.secondary)
+                } else {
+                    ForEach(sections(in: visible), id: \.letter) { section in
+                        Section(header: Text(section.letter).id(section.letter)) {
+                            ForEach(section.apps) { app in
+                                NavigationLink(destination: AppDetailView(app: app, viewModel: viewModel)) {
+                                    HStack(spacing: 12) {
+                                        AppIconView(icon: viewModel.icons[app.bundleIdentifier])
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text(app.name)
+                                                .font(.body)
+                                            Text(app.bundleIdentifier)
+                                                .font(.caption)
+                                                .foregroundColor(.secondary)
+                                        }
+                                    }
+                                    .padding(.vertical, 4)
+                                }
+                                .contextMenu {
+                                    Button {
+                                        FileClipboard.copyText(
+                                            app.bundleIdentifier,
+                                            confirmation: "Copied Bundle ID"
+                                        )
+                                    } label: {
+                                        Label("Copy Bundle ID", systemImage: "doc.on.doc")
+                                    }
+                                    Button {
+                                        FileClipboard.copyText(app.name, confirmation: "Copied Name")
+                                    } label: {
+                                        Label("Copy Name", systemImage: "character.cursor.ibeam")
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
-                .padding(.vertical, 4)
             }
-            .contextMenu {
-                Button {
-                    FileClipboard.copyText(app.bundleIdentifier)
-                } label: {
-                    Label("Copy Bundle ID", systemImage: "doc.on.doc")
-                }
-                Button {
-                    FileClipboard.copyText(app.name)
-                } label: {
-                    Label("Copy Name", systemImage: "character.cursor.ibeam")
+            .overlay(alignment: .trailing) {
+                if searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                   visible.count > 8 {
+                    sectionIndex(letters: sections(in: visible).map(\.letter), proxy: proxy)
                 }
             }
         }
+        .searchable(text: $searchText, prompt: "Search apps")
+    }
+
+    private var filteredApps: [InstalledApp] {
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return viewModel.apps }
+        return viewModel.apps.filter { app in
+            app.name.localizedCaseInsensitiveContains(query)
+                || app.bundleIdentifier.localizedCaseInsensitiveContains(query)
+        }
+    }
+
+    private func sections(in apps: [InstalledApp]) -> [(letter: String, apps: [InstalledApp])] {
+        let grouped = Dictionary(grouping: apps) { app -> String in
+            let folded = app.name.folding(options: .diacriticInsensitive, locale: .current)
+            guard let ch = folded.uppercased().first, ch.isLetter else { return "#" }
+            return String(ch)
+        }
+        let keys = grouped.keys.sorted { a, b in
+            if a == "#" { return false }
+            if b == "#" { return true }
+            return a < b
+        }
+        return keys.map { letter in
+            let rows = (grouped[letter] ?? []).sorted {
+                $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
+            }
+            return (letter, rows)
+        }
+    }
+
+    private func sectionIndex(letters: [String], proxy: ScrollViewProxy) -> some View {
+        VStack(spacing: 1) {
+            ForEach(letters, id: \.self) { letter in
+                Button {
+                    withAnimation(.easeOut(duration: 0.15)) {
+                        proxy.scrollTo(letter, anchor: .top)
+                    }
+                } label: {
+                    Text(letter)
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(.accentColor)
+                        .frame(minWidth: 14, minHeight: 12)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.vertical, 4)
+        .padding(.trailing, 3)
+        .contentShape(Rectangle())
     }
 }

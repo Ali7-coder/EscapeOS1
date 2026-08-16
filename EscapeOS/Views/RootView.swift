@@ -12,6 +12,7 @@ struct RootView: View {
     @StateObject private var viewModel = AppListViewModel()
     @AppStorage("HasAcknowledgedLimits") private var hasAcknowledgedLimits = false
     @State private var selectedTab: MainTab = .apps
+    @ObservedObject private var copyFeedback = CopyFeedback.shared
 
     var body: some View {
         TabView(selection: $selectedTab) {
@@ -57,6 +58,7 @@ struct RootView: View {
             }
             .tag(MainTab.settings)
         }
+        .overlay(CopyBanner(message: copyFeedback.message))
         .sheet(isPresented: Binding(
             get: { !hasAcknowledgedLimits },
             set: { if !$0 { hasAcknowledgedLimits = true } }
