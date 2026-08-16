@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.1.1] - 2026-08-16
+
+### Added
+
+- **Apps search** and an **A–Z jump index** on the right edge of the app list.
+- **Copy confirmation** (banner + haptic) for Bundle ID, name, path, SHA-256, and file Copy/Cut.
+
+v0.1.0 is unchanged on GitHub. This is a new tag and IPA.
+
 ## [0.1.0] - 2026-08-14
 
 First public sideload IPA.

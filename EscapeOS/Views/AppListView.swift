@@ -96,7 +96,7 @@ struct AppListView: View {
         ScrollViewReader { proxy in
             List {
                 if visible.isEmpty {
-                    Text("No apps match “\(searchText.trimmingCharacters(in: .whitespacesAndNewlines))”.")
+                    Text(emptyListMessage)
                         .foregroundColor(.secondary)
                 } else {
                     ForEach(sections(in: visible), id: \.letter) { section in
@@ -143,6 +143,14 @@ struct AppListView: View {
             }
         }
         .searchable(text: $searchText, prompt: "Search apps")
+    }
+
+    private var emptyListMessage: String {
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if query.isEmpty {
+            return "No apps found."
+        }
+        return "No apps match “\(query)”."
     }
 
     private var filteredApps: [InstalledApp] {

@@ -12,9 +12,9 @@ On-device file browser and App Store app-data backup/restore for sideloaded iOS,
 
 ## What it does
 
-- Lists installed user apps through LocalDevVPN + `pairingFile.plist` in Documents.
+- Lists installed user apps through LocalDevVPN + `pairingFile.plist` in Documents. Search by name or bundle ID; A–Z letters on the right jump the list.
 - Browses an app Data container (`Documents`, `Library`, `tmp`) after consuming a `bad_query` sandbox extension for that container UUID.
-- Creates, previews, edits, and shares files in that container. Select in the top right for multi-select Copy, Cut, Paste, Duplicate, and Delete. Copy Path / Copy Bundle ID put text on the system clipboard.
+- Creates, previews, edits, and shares files in that container. Select in the top right for multi-select Copy, Cut, Paste, Duplicate, and Delete. Copy Path / Copy Bundle ID put text on the system clipboard and show a confirmation.
 - Exports a zip + `manifest.json` (SHA-256 per file) into Files → On My iPhone → EscapeOS → Backups, and restores that archive into the same app's current container.
 
 ## What it does not do
