@@ -8,6 +8,7 @@ struct ZipEntry {
     let uncompressedSize: Int
     let crc32: UInt32
     let localHeaderOffset: Int
+    let compression: Int
 }
 
 /// Errors when reading ZIP archives.
@@ -19,7 +20,7 @@ enum ZipReaderError: Error, LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .invalidArchive(let m): return "Invalid backup archive: \(m)"
+        case .invalidArchive(let m): return "Invalid zip: \(m)"
         case .entryNotFound(let n): return "Missing file in archive: \(n)"
         case .checksumMismatch(let n): return "Checksum failed for \(n)"
         case .unsupportedCompression(let n): return "Unsupported compression for \(n)"
@@ -27,7 +28,7 @@ enum ZipReaderError: Error, LocalizedError {
     }
 }
 
-/// Minimal reader for store-only ZIP archives written by EscapeOS.
+/// ZIP reader for store (method 0) and deflate (method 8). Used by backup restore and Extract.
 final class ZipReader {
 
     private let data: Data
@@ -66,19 +67,25 @@ final class ZipReader {
         }
 
         let compression = Int(data.readUInt16(at: localOffset + 8))
-        guard compression == 0 else {
-            throw ZipReaderError.unsupportedCompression(entry.name)
-        }
-
         let nameLen = Int(data.readUInt16(at: localOffset + 26))
         let extraLen = Int(data.readUInt16(at: localOffset + 28))
         let payloadStart = localOffset + 30 + nameLen + extraLen
-        let payloadEnd = payloadStart + entry.uncompressedSize
+        let payloadEnd = payloadStart + entry.compressedSize
         guard payloadEnd <= data.count else {
             throw ZipReaderError.invalidArchive("Truncated payload for \(entry.name)")
         }
 
-        let payload = data.subdata(in: payloadStart..<payloadEnd)
+        let stored = data.subdata(in: payloadStart..<payloadEnd)
+        let payload: Data
+        switch compression {
+        case 0:
+            payload = stored
+        case 8:
+            payload = try Self.inflateRaw(stored, expected: entry.uncompressedSize)
+        default:
+            throw ZipReaderError.unsupportedCompression(entry.name)
+        }
+
         var crc: uLong = crc32(0, nil, 0)
         payload.withUnsafeBytes { ptr in
             if let base = ptr.baseAddress {
@@ -88,10 +95,89 @@ final class ZipReader {
         guard UInt32(truncatingIfNeeded: crc) == entry.crc32 else {
             throw ZipReaderError.checksumMismatch(entry.name)
         }
-        guard payload.count == entry.uncompressedSize else {
+        if entry.uncompressedSize > 0, payload.count != entry.uncompressedSize {
             throw ZipReaderError.invalidArchive("Size mismatch for \(entry.name)")
         }
         return payload
+    }
+
+    /// Unpack every entry under `destDir`. Rejects `..` paths.
+    func extract(into destDir: String, files: FileService) throws {
+        let root = (destDir as NSString).standardizingPath
+        try files.createDirectory(at: root)
+        var fileCount = 0
+        var byteCount: Int64 = 0
+        for name in entryNames() {
+            if name.isEmpty { continue }
+            let parts = name.split(separator: "/").map(String.init)
+            if parts.contains("..") {
+                throw ZipReaderError.invalidArchive("Unsafe path in zip: \(name)")
+            }
+            let dest = parts.reduce(root) { ($0 as NSString).appendingPathComponent($1) }
+            let destStd = (dest as NSString).standardizingPath
+            guard destStd == root || destStd.hasPrefix(root + "/") else {
+                throw ZipReaderError.invalidArchive("Unsafe path in zip: \(name)")
+            }
+            if name.hasSuffix("/") {
+                try files.createDirectory(at: destStd)
+                continue
+            }
+            let payload = try readEntry(named: name)
+            fileCount += 1
+            byteCount += Int64(payload.count)
+            if fileCount > 20_000 {
+                throw FileServiceError.operationFailed("Too many files to extract (20,000 limit).")
+            }
+            if byteCount > 2_000_000_000 {
+                throw FileServiceError.operationFailed("Extracted data would be larger than 2 GB.")
+            }
+            try files.writeFile(data: payload, to: destStd)
+        }
+    }
+
+    private static func inflateRaw(_ input: Data, expected: Int) throws -> Data {
+        if input.isEmpty { return Data() }
+        var stream = z_stream()
+        let initStatus = inflateInit2_(&stream, -MAX_WBITS, ZLIB_VERSION, Int32(MemoryLayout<z_stream>.size))
+        guard initStatus == Z_OK else {
+            throw ZipReaderError.unsupportedCompression("deflate")
+        }
+        defer { inflateEnd(&stream) }
+
+        return try input.withUnsafeBytes { raw in
+            guard let inBase = raw.bindMemory(to: Bytef.self).baseAddress else {
+                throw ZipReaderError.invalidArchive("Empty deflate stream")
+            }
+            stream.next_in = UnsafeMutablePointer(mutating: inBase)
+            stream.avail_in = uInt(input.count)
+
+            var output = Data()
+            output.reserveCapacity(max(expected, 64))
+            let chunk = 64 * 1024
+            var buffer = [Bytef](repeating: 0, count: chunk)
+            var status: Int32 = Z_OK
+            repeat {
+                buffer.withUnsafeMutableBufferPointer { buf in
+                    stream.next_out = buf.baseAddress
+                    stream.avail_out = uInt(chunk)
+                    status = zlib.inflate(&stream, Z_NO_FLUSH)
+                    let produced = chunk - Int(stream.avail_out)
+                    if produced > 0, let base = buf.baseAddress {
+                        output.append(base, count: produced)
+                    }
+                }
+                if output.count > 2_000_000_000 {
+                    throw FileServiceError.operationFailed("Extracted data would be larger than 2 GB.")
+                }
+                if status == Z_STREAM_ERROR || status == Z_DATA_ERROR || status == Z_MEM_ERROR {
+                    throw ZipReaderError.invalidArchive("Deflate failed")
+                }
+            } while status == Z_OK
+            guard status == Z_STREAM_END else {
+                throw ZipReaderError.invalidArchive("Truncated deflate stream")
+            }
+            return output
+        }
     }
 
     private func parseCentralDirectory() throws {
@@ -126,10 +212,6 @@ final class ZipReader {
             guard sig == 0x02014b50 else { break }
 
             let compression = Int(data.readUInt16(at: offset + 10))
-            guard compression == 0 else {
-                throw ZipReaderError.unsupportedCompression("central directory entry")
-            }
-
             let crc = data.readUInt32(at: offset + 16)
             let compressed = Int(data.readUInt32(at: offset + 20))
             let uncompressed = Int(data.readUInt32(at: offset + 24))
@@ -144,8 +226,10 @@ final class ZipReader {
                 throw ZipReaderError.invalidArchive("Truncated entry name")
             }
             let nameData = data.subdata(in: nameStart..<nameEnd)
-            guard let name = String(data: nameData, encoding: .utf8) else {
-                throw ZipReaderError.invalidArchive("Non-UTF-8 entry name")
+            let name = String(data: nameData, encoding: .utf8)
+                ?? String(data: nameData, encoding: .isoLatin1)
+            guard let name else {
+                throw ZipReaderError.invalidArchive("Unreadable entry name")
             }
 
             parsed[name] = ZipEntry(
@@ -153,7 +237,8 @@ final class ZipReader {
                 compressedSize: compressed,
                 uncompressedSize: uncompressed,
                 crc32: crc,
-                localHeaderOffset: localHeaderOffset
+                localHeaderOffset: localHeaderOffset,
+                compression: compression
             )
 
             offset = nameEnd + extraLen + commentLen

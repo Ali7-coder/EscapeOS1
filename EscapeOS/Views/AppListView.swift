@@ -136,27 +136,14 @@ struct AppListView: View {
                     }
                 }
             }
-            .safeAreaInset(edge: .trailing, spacing: 0) {
-                if showSectionIndex(for: visible) {
-                    Color.clear.frame(width: 36)
-                }
-            }
             .overlay(alignment: .trailing) {
-                if showSectionIndex(for: visible) {
-                    SectionIndexBar(
-                        letters: sections(in: visible).map(\.letter)
-                    ) { letter in
-                        proxy.scrollTo(letter, anchor: .top)
-                    }
+                if searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                   visible.count > 8 {
+                    sectionIndex(letters: sections(in: visible).map(\.letter), proxy: proxy)
                 }
             }
         }
         .searchable(text: $searchText, prompt: "Search apps")
-    }
-
-    private func showSectionIndex(for visible: [InstalledApp]) -> Bool {
-        searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            && visible.count > 8
     }
 
     private var emptyListMessage: String {
@@ -195,52 +182,24 @@ struct AppListView: View {
         }
     }
 
-}
-
-/// Contacts-style A–Z scrubber: one wide strip, drag or tap (not 11pt buttons).
-private struct SectionIndexBar: View {
-    let letters: [String]
-    let onSelect: (String) -> Void
-
-    @State private var lastLetter: String?
-
-    var body: some View {
-        GeometryReader { geo in
-            VStack(spacing: 0) {
-                ForEach(letters, id: \.self) { letter in
-                    Text(letter)
-                        .font(.system(size: 12, weight: .bold))
-                        .foregroundColor(.accentColor)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                }
-            }
-            .padding(.vertical, 10)
-            .frame(width: geo.size.width, height: geo.size.height)
-            .contentShape(Rectangle())
-            .highPriorityGesture(
-                DragGesture(minimumDistance: 0)
-                    .onChanged { value in
-                        guard let letter = letter(at: value.location.y, height: geo.size.height) else { return }
-                        if letter != lastLetter {
-                            lastLetter = letter
-                            UISelectionFeedbackGenerator().selectionChanged()
-                            onSelect(letter)
-                        }
+    private func sectionIndex(letters: [String], proxy: ScrollViewProxy) -> some View {
+        VStack(spacing: 1) {
+            ForEach(letters, id: \.self) { letter in
+                Button {
+                    withAnimation(.easeOut(duration: 0.15)) {
+                        proxy.scrollTo(letter, anchor: .top)
                     }
-                    .onEnded { _ in lastLetter = nil }
-            )
+                } label: {
+                    Text(letter)
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(.accentColor)
+                        .frame(minWidth: 14, minHeight: 12)
+                }
+                .buttonStyle(.plain)
+            }
         }
-        .frame(width: 44)
-        .padding(.vertical, 8)
-        .accessibilityHidden(true)
-    }
-
-    private func letter(at y: CGFloat, height: CGFloat) -> String? {
-        guard !letters.isEmpty, height > 0 else { return nil }
-        let inset: CGFloat = 10
-        let usable = max(height - inset * 2, 1)
-        let clamped = min(max(y - inset, 0), usable - 0.001)
-        let index = min(letters.count - 1, Int(clamped / usable * CGFloat(letters.count)))
-        return letters[index]
+        .padding(.vertical, 4)
+        .padding(.trailing, 3)
+        .contentShape(Rectangle())
     }
 }

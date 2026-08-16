@@ -14,7 +14,7 @@ On-device file browser and App Store app-data backup/restore for sideloaded iOS,
 
 - Lists installed user apps through LocalDevVPN + `pairingFile.plist` in Documents. Search by name or bundle ID; A–Z letters on the right jump the list.
 - Browses an app Data container (`Documents`, `Library`, `tmp`) after consuming a `bad_query` sandbox extension for that container UUID.
-- Creates, previews, edits, and shares files in that container (share keeps the original name). Compress makes a zip of files or folders in the current directory. Select in the top right for multi-select Copy, Cut, Paste, Compress, Duplicate, and Delete. Copy Path / Copy Bundle ID put text on the system clipboard and show a confirmation.
+- Creates, previews, edits, and shares files in that container (share keeps the original name). Compress makes a zip of files or folders in the current directory. Tap a zip or IPA to extract it. Select in the top right for multi-select Copy, Cut, Paste, Compress, Duplicate, and Delete. Copy Path / Copy Bundle ID put text on the system clipboard and show a confirmation.
 - Exports a zip + `manifest.json` (SHA-256 per file) into Files → On My iPhone → EscapeOS → Backups, and restores that archive into the same app's current container.
 
 ## What it does not do
@@ -33,7 +33,7 @@ The IPA will install on iOS 18.0 or later (`MinimumOSVersion` 18.0). **Opening a
 |---|---|---|---|
 | iOS 18.0 – 18.x | Untested upstream (“might also work”). | In this build: lockdown loopback `10.7.0.1:62078`. | **Not tested here** |
 | iOS 26.0 – 26.3 | Upstream: yes (26.0–26.6.1). | Remote Pairing listing is a **26.4+** recipe; lockdown on these builds is untested. | **Not tested here** |
-| iOS 26.4 – 26.6.1 | Upstream: yes. | Remote Pairing / RSD `10.7.0.1:49152`. | **Verified** 26.5.1 (iPhone 17: list, browse, Select/copy-paste, backup, pairing place) |
+| iOS 26.4 – 26.6.1 | Upstream: yes. | Remote Pairing / RSD `10.7.0.1:49152`. | **Verified** 26.5.1 (iPhone 17: list, browse, Select/copy-paste, backup, pairing place, Compress/Extract, share names) |
 | iOS 26.7 and later | **Unsupported** (outside bad_query). | — | — |
 | iOS 27.0 beta 4 | Upstream: yes. | Untested here. | **Not tested here** |
 | iOS 27.0 beta 5 and later | **Unsupported** (outside bad_query). | — | — |

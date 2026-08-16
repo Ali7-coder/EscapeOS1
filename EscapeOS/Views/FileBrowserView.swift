@@ -247,6 +247,15 @@ struct FileBrowserView: View {
                         FileRow(item: item)
                     }
                     .contextMenu { itemMenu(for: item) }
+                } else if FileContentKind.classify(name: item.name, isDirectory: false) == .archive {
+                    Button {
+                        vm.unzip(item: item)
+                    } label: {
+                        FileRow(item: item)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(vm.isZipping)
+                    .contextMenu { itemMenu(for: item) }
                 } else {
                     NavigationLink(destination: FileViewerView(app: app, item: item, mode: .auto)) {
                         FileRow(item: item)
@@ -397,25 +406,39 @@ struct FileBrowserView: View {
     private func itemMenu(for item: FileItem) -> some View {
         Group {
             if !item.isDirectory {
-                Button {
-                    openRequest = OpenRequest(item: item, mode: .auto)
-                } label: {
-                    Label("Open", systemImage: "eye")
-                }
-                Button {
-                    openRequest = OpenRequest(item: item, mode: .preview)
-                } label: {
-                    Label("Preview", systemImage: "doc.viewfinder")
-                }
-                Button {
-                    openRequest = OpenRequest(item: item, mode: .text)
-                } label: {
-                    Label("Open as Text", systemImage: "doc.plaintext")
-                }
-                Button {
-                    openRequest = OpenRequest(item: item, mode: .hex)
-                } label: {
-                    Label("Open as Hex", systemImage: "number")
+                if FileContentKind.classify(name: item.name, isDirectory: false) == .archive {
+                    Button {
+                        vm.unzip(item: item)
+                    } label: {
+                        Label("Extract", systemImage: "archivebox")
+                    }
+                    .disabled(vm.isZipping)
+                    Button {
+                        openRequest = OpenRequest(item: item, mode: .hex)
+                    } label: {
+                        Label("Open as Hex", systemImage: "number")
+                    }
+                } else {
+                    Button {
+                        openRequest = OpenRequest(item: item, mode: .auto)
+                    } label: {
+                        Label("Open", systemImage: "eye")
+                    }
+                    Button {
+                        openRequest = OpenRequest(item: item, mode: .preview)
+                    } label: {
+                        Label("Preview", systemImage: "doc.viewfinder")
+                    }
+                    Button {
+                        openRequest = OpenRequest(item: item, mode: .text)
+                    } label: {
+                        Label("Open as Text", systemImage: "doc.plaintext")
+                    }
+                    Button {
+                        openRequest = OpenRequest(item: item, mode: .hex)
+                    } label: {
+                        Label("Open as Hex", systemImage: "number")
+                    }
                 }
             }
             Button {
@@ -838,6 +861,49 @@ final class FileBrowserViewModel: ObservableObject {
                     self.isZipping = false
                     let name = (destPath as NSString).lastPathComponent
                     CopyFeedback.shared.show("Created “\(name)”")
+                    self.open(self.currentPath)
+                }
+            } catch {
+                DispatchQueue.main.async {
+                    self.isZipping = false
+                    self.operationError = IdentifiedError(message: error.localizedDescription)
+                }
+            }
+        }
+    }
+
+    func unzip(item: FileItem) {
+        guard !isZipping else { return }
+        isZipping = true
+        operationError = nil
+        DispatchQueue.global(qos: .userInitiated).async {
+            do {
+                let destName: String = try self.escape.withHandle(for: self.app.containerPath) { _ in
+                    let preferred = (item.name as NSString).deletingPathExtension
+                    let dest = self.files.uniqueDestination(
+                        in: self.currentPath,
+                        preferredName: preferred.isEmpty ? "Archive" : preferred
+                    )
+                    let bytes = try self.files.readFile(at: item.path)
+                    let reader: ZipReader
+                    do {
+                        reader = try ZipReader(data: bytes)
+                    } catch {
+                        throw FileServiceError.operationFailed(
+                            "Can’t extract “\(item.name)”. Zip and IPA work; use Open as Hex for other archives."
+                        )
+                    }
+                    do {
+                        try reader.extract(into: dest, files: self.files)
+                    } catch {
+                        try? FileManager.default.removeItem(atPath: dest)
+                        throw error
+                    }
+                    return (dest as NSString).lastPathComponent
+                }
+                DispatchQueue.main.async {
+                    self.isZipping = false
+                    CopyFeedback.shared.show("Extracted to “\(destName)”")
                     self.open(self.currentPath)
                 }
             } catch {

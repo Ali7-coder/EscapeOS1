@@ -1,15 +1,22 @@
 # Changelog
 
-## [0.1.2] - 2026-08-16
+## [0.1.3] - 2026-08-16
 
-### Fixed
-
-- A–Z jump index is a wide drag strip (was tiny buttons that missed taps).
-- Share / Save to Files keeps the original filename (no `shared_` prefix). Folders share as `FolderName.zip`.
+Production IPA after 0.1.1. Hardware-checked on iPhone 17, iOS 26.5.1 (list, browse, pairing place).
 
 ### Added
 
-- **Compress** in the file browser (context menu and Select → More) zips files and folders into the current directory.
+- **Compress** in the file browser (long-press or Select → More) zips files and folders into the current folder.
+- **Extract** for zip / IPA: tap the archive (or Extract in the menu) to unpack a folder next to it. Open as Hex stays on the menu.
+
+### Fixed
+
+- Share / Save to Files keeps the original filename (no `shared_` prefix). Folders share as `FolderName.zip`.
+- Empty Apps list says “No apps found.” instead of a blank search miss.
+
+A–Z jump is the same small index as 0.1.1 (no extra inset beside search).
+
+v0.1.0 and v0.1.1 are unchanged on GitHub.
 
 ## [0.1.1] - 2026-08-16
 
