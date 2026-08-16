@@ -286,6 +286,12 @@ struct FileBrowserView: View {
                 }
                 Menu {
                     Button {
+                        vm.zip(items: selectedItems)
+                    } label: {
+                        Label(selectedItems.count == 1 ? "Compress" : "Compress to Zip", systemImage: "doc.zipper")
+                    }
+                    .disabled(selectedItems.isEmpty || vm.isZipping)
+                    Button {
                         vm.duplicate(items: selectedItems)
                     } label: {
                         Label("Duplicate", systemImage: "plus.square.on.square")
@@ -318,7 +324,14 @@ struct FileBrowserView: View {
                             } label: {
                                 Label("Share / Save to Files", systemImage: "square.and.arrow.up")
                             }
-                            .disabled(vm.isExporting)
+                            .disabled(vm.isExporting || vm.isZipping)
+                        } else {
+                            Button {
+                                vm.export(item: item)
+                            } label: {
+                                Label("Share Zip", systemImage: "square.and.arrow.up")
+                            }
+                            .disabled(vm.isExporting || vm.isZipping)
                         }
                     }
                 } label: {
@@ -382,74 +395,87 @@ struct FileBrowserView: View {
 
     @ViewBuilder
     private func itemMenu(for item: FileItem) -> some View {
-        if !item.isDirectory {
-            Button {
-                openRequest = OpenRequest(item: item, mode: .auto)
-            } label: {
-                Label("Open", systemImage: "eye")
-            }
-            Button {
-                openRequest = OpenRequest(item: item, mode: .preview)
-            } label: {
-                Label("Preview", systemImage: "doc.viewfinder")
-            }
-            Button {
-                openRequest = OpenRequest(item: item, mode: .text)
-            } label: {
-                Label("Open as Text", systemImage: "doc.plaintext")
-            }
-            Button {
-                openRequest = OpenRequest(item: item, mode: .hex)
-            } label: {
-                Label("Open as Hex", systemImage: "number")
+        Group {
+            if !item.isDirectory {
+                Button {
+                    openRequest = OpenRequest(item: item, mode: .auto)
+                } label: {
+                    Label("Open", systemImage: "eye")
+                }
+                Button {
+                    openRequest = OpenRequest(item: item, mode: .preview)
+                } label: {
+                    Label("Preview", systemImage: "doc.viewfinder")
+                }
+                Button {
+                    openRequest = OpenRequest(item: item, mode: .text)
+                } label: {
+                    Label("Open as Text", systemImage: "doc.plaintext")
+                }
+                Button {
+                    openRequest = OpenRequest(item: item, mode: .hex)
+                } label: {
+                    Label("Open as Hex", systemImage: "number")
+                }
             }
             Button {
                 vm.export(item: item)
             } label: {
-                Label("Share / Save to Files", systemImage: "square.and.arrow.up")
+                Label(
+                    item.isDirectory ? "Share Zip" : "Share / Save to Files",
+                    systemImage: "square.and.arrow.up"
+                )
             }
-            .disabled(vm.isExporting)
+            .disabled(vm.isExporting || vm.isZipping)
+            Button {
+                vm.zip(items: [item])
+            } label: {
+                Label("Compress", systemImage: "doc.zipper")
+            }
+            .disabled(vm.isZipping)
         }
-        Button {
-            enterSelection(preselect: item)
-        } label: {
-            Label("Select", systemImage: "checkmark.circle")
-        }
-        Button {
-            FileClipboard.shared.copy([item], containerPath: app.containerPath)
-        } label: {
-            Label("Copy", systemImage: "doc.on.doc")
-        }
-        Button {
-            FileClipboard.shared.cut([item], containerPath: app.containerPath)
-        } label: {
-            Label("Cut", systemImage: "scissors")
-        }
-        Button {
-            FileClipboard.copyText(item.path, confirmation: "Copied Path")
-        } label: {
-            Label("Copy Path", systemImage: "list.clipboard")
-        }
-        Button {
-            vm.duplicate(item: item)
-        } label: {
-            Label("Duplicate", systemImage: "plus.square.on.square")
-        }
-        Button {
-            propertiesItem = item
-        } label: {
-            Label("Properties", systemImage: "info.circle")
-        }
-        Button {
-            renameName = item.name
-            renameItem = item
-        } label: {
-            Label("Rename", systemImage: "pencil")
-        }
-        Button(role: .destructive) {
-            pendingDelete = [item]
-        } label: {
-            Label("Delete", systemImage: "trash")
+        Group {
+            Button {
+                enterSelection(preselect: item)
+            } label: {
+                Label("Select", systemImage: "checkmark.circle")
+            }
+            Button {
+                FileClipboard.shared.copy([item], containerPath: app.containerPath)
+            } label: {
+                Label("Copy", systemImage: "doc.on.doc")
+            }
+            Button {
+                FileClipboard.shared.cut([item], containerPath: app.containerPath)
+            } label: {
+                Label("Cut", systemImage: "scissors")
+            }
+            Button {
+                FileClipboard.copyText(item.path, confirmation: "Copied Path")
+            } label: {
+                Label("Copy Path", systemImage: "list.clipboard")
+            }
+            Button {
+                vm.duplicate(item: item)
+            } label: {
+                Label("Duplicate", systemImage: "plus.square.on.square")
+            }
+            Button {
+                propertiesItem = item
+            } label: {
+                Label("Properties", systemImage: "info.circle")
+            }
+            Button {
+                renameName = item.name
+                renameItem = item
+            } label: {
+                Label("Rename", systemImage: "pencil")
+            }
+            Button(role: .destructive) {
+                pendingDelete = [item]
+            } label: {
+                Label("Delete", systemImage: "trash")
+            }
         }
     }
 }
@@ -527,6 +553,7 @@ final class FileBrowserViewModel: ObservableObject {
     @Published var errorMessage: String?
     @Published var sharePayload: SharePayload?
     @Published var isExporting = false
+    @Published var isZipping = false
     @Published var exportError: IdentifiedError?
     @Published var operationError: IdentifiedError?
     @Published var isPasting = false
@@ -754,16 +781,23 @@ final class FileBrowserViewModel: ObservableObject {
         exportError = nil
         DispatchQueue.global(qos: .userInitiated).async {
             do {
-                let data = try self.escape.withHandle(for: self.app.containerPath) { _ in
-                    try self.files.readFile(at: item.path)
+                let dest = try Self.shareStagingURL(named: Self.shareName(for: item))
+                try self.escape.withHandle(for: self.app.containerPath) { _ in
+                    if item.isDirectory {
+                        let zip = ZipWriter()
+                        try zip.begin(at: dest)
+                        do {
+                            try zip.addItems([item], files: self.files, skipPath: dest.path)
+                            try zip.finish()
+                        } catch {
+                            try? zip.finish()
+                            throw error
+                        }
+                    } else {
+                        let data = try self.files.readFile(at: item.path)
+                        try data.write(to: dest, options: .atomic)
+                    }
                 }
-                let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-                let safeName = item.name.replacingOccurrences(of: "/", with: "_")
-                let dest = docs.appendingPathComponent("shared_\(safeName)")
-                if FileManager.default.fileExists(atPath: dest.path) {
-                    try FileManager.default.removeItem(at: dest)
-                }
-                try data.write(to: dest, options: .atomic)
                 DispatchQueue.main.async {
                     self.isExporting = false
                     self.sharePayload = SharePayload(url: dest)
@@ -775,6 +809,76 @@ final class FileBrowserViewModel: ObservableObject {
                 }
             }
         }
+    }
+
+    func zip(items: [FileItem]) {
+        guard !items.isEmpty, !isZipping else { return }
+        isZipping = true
+        operationError = nil
+        DispatchQueue.global(qos: .userInitiated).async {
+            do {
+                let destPath: String = try self.escape.withHandle(for: self.app.containerPath) { _ in
+                    let dest = self.files.uniqueDestination(
+                        in: self.currentPath,
+                        preferredName: Self.zipName(for: items)
+                    )
+                    let zip = ZipWriter()
+                    try zip.begin(at: URL(fileURLWithPath: dest))
+                    do {
+                        try zip.addItems(items, files: self.files, skipPath: dest)
+                        try zip.finish()
+                    } catch {
+                        try? zip.finish()
+                        try? FileManager.default.removeItem(atPath: dest)
+                        throw error
+                    }
+                    return dest
+                }
+                DispatchQueue.main.async {
+                    self.isZipping = false
+                    let name = (destPath as NSString).lastPathComponent
+                    CopyFeedback.shared.show("Created “\(name)”")
+                    self.open(self.currentPath)
+                }
+            } catch {
+                DispatchQueue.main.async {
+                    self.isZipping = false
+                    self.operationError = IdentifiedError(message: error.localizedDescription)
+                }
+            }
+        }
+    }
+
+    private static func zipName(for items: [FileItem]) -> String {
+        if items.count == 1 {
+            let name = items[0].name
+            let ns = name as NSString
+            if ns.pathExtension.lowercased() == "zip" {
+                return "\(ns.deletingPathExtension) archive.zip"
+            }
+            return "\(name).zip"
+        }
+        return "Archive.zip"
+    }
+
+    private static func shareName(for item: FileItem) -> String {
+        if item.isDirectory {
+            return "\(item.name).zip"
+        }
+        return item.name
+    }
+
+    /// Stage a share file in EscapeOS Documents under the original name (no `shared_` prefix).
+    private static func shareStagingURL(named name: String) throws -> URL {
+        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let safe = name
+            .replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: ":", with: "-")
+        let dest = docs.appendingPathComponent(safe)
+        if FileManager.default.fileExists(atPath: dest.path) {
+            try FileManager.default.removeItem(at: dest)
+        }
+        return dest
     }
 
     private func mutate(_ body: @escaping () throws -> Void) {

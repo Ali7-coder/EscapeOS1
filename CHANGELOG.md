@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.1.2] - 2026-08-16
+
+### Fixed
+
+- A–Z jump index is a wide drag strip (was tiny buttons that missed taps).
+- Share / Save to Files keeps the original filename (no `shared_` prefix). Folders share as `FolderName.zip`.
+
+### Added
+
+- **Compress** in the file browser (context menu and Select → More) zips files and folders into the current directory.
+
 ## [0.1.1] - 2026-08-16
 
 ### Added

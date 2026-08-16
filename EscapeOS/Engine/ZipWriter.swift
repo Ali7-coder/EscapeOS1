@@ -142,6 +142,70 @@ final class ZipWriter {
         let dosDate = UInt16((year << 9) | (month << 5) | day)
         return (dosTime, dosDate)
     }
+
+    /// Pack files and folders into this archive. Directory entries keep their
+    /// top-level names (`Caches/foo.plist`). `skipPath` is the zip being written
+    /// so a folder compress never includes itself.
+    func addItems(_ items: [FileItem], files: FileService, skipPath: String) throws {
+        var fileCount = 0
+        var byteCount: Int64 = 0
+        for item in items {
+            try addEntry(
+                path: item.path,
+                archiveName: item.name,
+                files: files,
+                skipPath: skipPath,
+                fileCount: &fileCount,
+                byteCount: &byteCount
+            )
+        }
+        if fileCount == 0 && centralDirectory.isEmpty {
+            throw FileServiceError.operationFailed("Nothing to zip.")
+        }
+    }
+
+    private func addEntry(
+        path: String,
+        archiveName: String,
+        files: FileService,
+        skipPath: String,
+        fileCount: inout Int,
+        byteCount: inout Int64
+    ) throws {
+        let standardized = (path as NSString).standardizingPath
+        let skip = (skipPath as NSString).standardizingPath
+        if standardized == skip || standardized.hasPrefix(skip + "/") {
+            return
+        }
+        if files.isDirectory(at: path) {
+            let children = try files.list(directory: path)
+            if children.isEmpty {
+                try addFile(name: archiveName.hasSuffix("/") ? archiveName : archiveName + "/", data: Data())
+                return
+            }
+            for child in children {
+                try addEntry(
+                    path: child.path,
+                    archiveName: archiveName + "/" + child.name,
+                    files: files,
+                    skipPath: skipPath,
+                    fileCount: &fileCount,
+                    byteCount: &byteCount
+                )
+            }
+            return
+        }
+        fileCount += 1
+        if fileCount > 20_000 {
+            throw FileServiceError.operationFailed("Too many files to zip (20,000 limit).")
+        }
+        let data = try files.readFile(at: path)
+        byteCount += Int64(data.count)
+        if byteCount > 2_000_000_000 {
+            throw FileServiceError.operationFailed("Zip would be larger than 2 GB.")
+        }
+        try addFile(name: archiveName, data: data, modified: Date())
+    }
 }
 
 private extension Data {
