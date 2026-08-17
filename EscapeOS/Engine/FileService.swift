@@ -211,6 +211,49 @@ final class FileService {
         }
     }
 
+    /// Empty a folder, skipping files that refuse to delete (common under Caches).
+    /// Recurses so one locked file does not keep the rest. Never follows a path
+    /// that standardizes outside `path`.
+    @discardableResult
+    func emptyDirectoryContentsBestEffort(at path: String) -> Int {
+        emptyDirectoryContentsBestEffort(at: path, stayingUnder: (path as NSString).standardizingPath)
+    }
+
+    private func emptyDirectoryContentsBestEffort(at path: String, stayingUnder root: String) -> Int {
+        let std = (path as NSString).standardizingPath
+        guard std == root || std.hasPrefix(root + "/") else { return 1 }
+        guard isDirectory(at: path) else { return 0 }
+        let children: [FileItem]
+        do {
+            children = try list(directory: path)
+        } catch {
+            return 1
+        }
+        var skipped = 0
+        for child in children {
+            let childStd = (child.path as NSString).standardizingPath
+            guard childStd == root || childStd.hasPrefix(root + "/") else {
+                skipped += 1
+                continue
+            }
+            do {
+                try deleteItem(at: child.path)
+            } catch {
+                if child.kind == .directory {
+                    skipped += emptyDirectoryContentsBestEffort(at: child.path, stayingUnder: root)
+                    do {
+                        try deleteItem(at: child.path)
+                    } catch {
+                        skipped += 1
+                    }
+                } else {
+                    skipped += 1
+                }
+            }
+        }
+        return skipped
+    }
+
     /// Next unused path in `directory` for `preferredName` (`foo.txt` → `foo 2.txt`).
     /// Uses only the last path component so `/abs` or `../x` cannot leave `directory`.
     func uniqueDestination(in directory: String, preferredName: String) -> String {
@@ -252,7 +295,11 @@ final class FileService {
                 if nodes > maxNodes { return }
                 if entry.isDirectory {
                     directories += 1
-                    try walk(entry.path)
+                    do {
+                        try walk(entry.path)
+                    } catch {
+                        // Locked cache folders must not zero the whole parent size.
+                    }
                 } else {
                     files += 1
                     bytes += entry.size
@@ -277,6 +324,9 @@ final class FileService {
             default:
                 break
             }
+        }
+        if ns.domain == NSPOSIXErrorDomain && (ns.code == Int(EPERM) || ns.code == Int(EACCES)) {
+            return .permissionDenied(path)
         }
         return .operationFailed(ns.localizedDescription)
     }

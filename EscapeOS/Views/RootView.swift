@@ -3,6 +3,7 @@ import UniformTypeIdentifiers
 
 private enum MainTab: Hashable {
     case apps
+    case reclaim
     case backups
     case settings
 }
@@ -35,6 +36,15 @@ struct RootView: View {
                 Label("Apps", systemImage: "square.grid.2x2.fill")
             }
             .tag(MainTab.apps)
+
+            NavigationView {
+                ReclaimTabView(appList: viewModel)
+                    .navigationBarTitleDisplayMode(.large)
+            }
+            .tabItem {
+                Label("Reclaim", systemImage: "internaldrive")
+            }
+            .tag(MainTab.reclaim)
 
             NavigationView {
                 BackupsListView(appList: viewModel)

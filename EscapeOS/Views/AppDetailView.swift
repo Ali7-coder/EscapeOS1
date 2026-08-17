@@ -11,6 +11,9 @@ struct AppDetailView: View {
     @StateObject private var inventory = ContainerInventoryModel()
     @State private var activeRestore: RestoreSession?
     @State private var restoreAlert: IdentifiedAlert?
+    @State private var confirmReset = false
+    @State private var isResetting = false
+    @State private var resetNotice: ReclaimNotice?
 
     var body: some View {
         List {
@@ -101,6 +104,11 @@ struct AppDetailView: View {
                 }
                 .disabled(!access.isGranted)
 
+                NavigationLink(destination: ReclaimAppView(app: app, viewModel: viewModel)) {
+                    Label("Reclaim Space", systemImage: "internaldrive")
+                }
+                .disabled(!access.isGranted)
+
                 Button {
                     backup.start(app: app) {
                         appBackups.reload(bundleIdentifier: app.bundleIdentifier)
@@ -111,6 +119,16 @@ struct AppDetailView: View {
                 .disabled(!access.isGranted || backup.isBusy)
 
                 backupStatus
+            }
+
+            Section(footer: Text("Wipes Documents, Library, and tmp for this app. Close \(app.name) first. Logins and saves in those folders are gone. Keychain and App Groups are not touched.")) {
+                Button(role: .destructive) {
+                    confirmReset = true
+                } label: {
+                    Label("Reset App Data", systemImage: "trash.fill")
+                        .foregroundColor(.red)
+                }
+                .disabled(!access.isGranted || isResetting)
             }
 
             Section(
@@ -151,6 +169,67 @@ struct AppDetailView: View {
         }
         .alert(item: $restoreAlert) { error in
             Alert(title: Text("Could Not Start Restore"), message: Text(error.message), dismissButton: .default(Text("OK")))
+        }
+        .alert("Reset all app data?", isPresented: $confirmReset) {
+            Button("Cancel", role: .cancel) {}
+            Button("Reset App Data", role: .destructive) {
+                resetAppData()
+            }
+        } message: {
+            Text(resetConfirmMessage)
+        }
+        .alert(item: $resetNotice) { notice in
+            Alert(title: Text(notice.title), message: Text(notice.message), dismissButton: .default(Text("OK")))
+        }
+        .overlay {
+            if isResetting {
+                ZStack {
+                    Color.black.opacity(0.28).ignoresSafeArea()
+                    VStack(spacing: 14) {
+                        ProgressView()
+                            .scaleEffect(1.15)
+                        Text("Resetting…")
+                            .font(.headline)
+                    }
+                    .padding(.horizontal, 28)
+                    .padding(.vertical, 22)
+                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                }
+            }
+        }
+    }
+
+    private var resetConfirmMessage: String {
+        var text = "Close \(app.name) first. This empties Documents, Library, and tmp. You will need to sign in and set the app up again. Keychain is not deleted."
+        if app.bundleIdentifier == Bundle.main.bundleIdentifier {
+            text += " This is EscapeOS — the pairing file in Documents will be deleted too."
+        }
+        return text
+    }
+
+    private func resetAppData() {
+        isResetting = true
+        DispatchQueue.global(qos: .userInitiated).async {
+            do {
+                let skipped = try ReclaimService().resetAppData(app: app)
+                DispatchQueue.main.async {
+                    self.isResetting = false
+                    self.inventory.load(app: app)
+                    var message = "Documents, Library, and tmp are empty."
+                    if skipped > 0 {
+                        message = "Cleared what we could. Skipped \(skipped) items that could not be deleted."
+                    }
+                    self.resetNotice = ReclaimNotice(
+                        title: "App Data Reset",
+                        message: message
+                    )
+                }
+            } catch {
+                DispatchQueue.main.async {
+                    self.isResetting = false
+                    self.resetNotice = ReclaimNotice(title: "Reset Failed", message: error.localizedDescription)
+                }
+            }
         }
     }
 

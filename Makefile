@@ -21,6 +21,8 @@ EscapeOS_FILES = \
 	EscapeOS/Views/BackupView.swift \
 	EscapeOS/Views/BackupsListView.swift \
 	EscapeOS/Views/LimitsDisclaimer.swift \
+	EscapeOS/Views/ReclaimAppView.swift \
+	EscapeOS/Views/ReclaimTabView.swift \
 	EscapeOS/Engine/ZipReader.swift \
 	EscapeOS/Engine/BackupPaths.swift \
 	EscapeOS/Engine/RestoreService.swift \
@@ -34,6 +36,7 @@ EscapeOS_FILES = \
 	EscapeOS/Engine/ZipPassword.swift \
 	EscapeOS/Engine/SevenZipAES.swift \
 	EscapeOS/Engine/ArchiveExtractor.swift \
+	EscapeOS/Engine/ReclaimService.swift \
 	EscapeOS/Engine/zip_crypto.c \
 	EscapeOS/Engine/bad_query.c \
 	EscapeOS/Tunnel/TunnelContext.m \

@@ -16,6 +16,8 @@ On-device file browser and App Store app-data backup/restore for sideloaded iOS,
 - Browses an app Data container (`Documents`, `Library`, `tmp`) after consuming a `bad_query` sandbox extension for that container UUID.
 - Creates, previews, edits, and shares files in that container (share keeps the original name). Compress makes a zip of files and folders in the current directory. Tap zip, 7z, tar, gz, bz2, xz, lz4, lzma, or deb to extract; encrypted zip and 7z ask for a password. RAR is not unpackable. Select in the top right for multi-select Copy, Cut, Paste, Compress, Duplicate, and Delete. Copy Path / Copy Bundle ID put text on the system clipboard and show a confirmation.
 - Exports a zip + `manifest.json` (SHA-256 per file) into Files → On My iPhone → EscapeOS → Backups, and restores that archive into the same app's current container.
+- **Reclaim** ranks apps by cache/tmp size and can empty Safe buckets (`tmp`, `Library/Caches`, logs, splash snapshots). Session buckets (cookies, WebKit) are opt-in per app. Documents, Preferences, and Application Support are never reclaimed.
+- **Reset App Data** on an app’s detail screen empties that app’s Documents, Library, and tmp. It does not touch Keychain or App Groups.
 
 ## What it does not do
 
@@ -33,7 +35,7 @@ The IPA will install on iOS 18.0 or later (`MinimumOSVersion` 18.0). **Opening a
 |---|---|---|---|
 | iOS 18.0 – 18.x | Untested upstream (“might also work”). | In this build: lockdown loopback `10.7.0.1:62078`. | **Not tested here** |
 | iOS 26.0 – 26.3 | Upstream: yes (26.0–26.6.1). | Remote Pairing listing is a **26.4+** recipe; lockdown on these builds is untested. | **Not tested here** |
-| iOS 26.4 – 26.6.1 | Upstream: yes. | Remote Pairing / RSD `10.7.0.1:49152`. | **Verified** 26.5.1 (iPhone 17: list, browse, Select/copy-paste, backup, pairing place, Compress/Extract, share names) |
+| iOS 26.4 – 26.6.1 | Upstream: yes. | Remote Pairing / RSD `10.7.0.1:49152`. | **Verified** 26.5.1 (iPhone 17: list, browse, Select/copy-paste, backup, pairing place, Compress/Extract, share names, Reclaim, Reset App Data) |
 | iOS 26.7 and later | **Unsupported** (outside bad_query). | — | — |
 | iOS 27.0 beta 4 | Upstream: yes. | Untested here. | **Not tested here** |
 | iOS 27.0 beta 5 and later | **Unsupported** (outside bad_query). | — | — |
