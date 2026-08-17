@@ -136,6 +136,7 @@ struct AppListView: View {
                     }
                 }
             }
+            .scrollIndicators(.hidden)
             .overlay(alignment: .trailing) {
                 if searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
                    visible.count > 8 {
@@ -185,21 +186,39 @@ struct AppListView: View {
     private func sectionIndex(letters: [String], proxy: ScrollViewProxy) -> some View {
         VStack(spacing: 1) {
             ForEach(letters, id: \.self) { letter in
-                Button {
-                    withAnimation(.easeOut(duration: 0.15)) {
-                        proxy.scrollTo(letter, anchor: .top)
-                    }
-                } label: {
-                    Text(letter)
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundColor(.accentColor)
-                        .frame(minWidth: 14, minHeight: 12)
-                }
-                .buttonStyle(.plain)
+                Text(letter)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(.accentColor)
+                    .frame(minWidth: 14, minHeight: 12)
             }
         }
         .padding(.vertical, 4)
-        .padding(.trailing, 3)
+        .padding(.trailing, 1)
         .contentShape(Rectangle())
+        .overlay {
+            GeometryReader { geo in
+                Color.clear
+                    .contentShape(Rectangle())
+                    .highPriorityGesture(
+                        DragGesture(minimumDistance: 0)
+                            .onChanged { value in
+                                jumpToLetter(
+                                    at: value.location.y,
+                                    height: geo.size.height,
+                                    letters: letters,
+                                    proxy: proxy
+                                )
+                            }
+                    )
+            }
+        }
+    }
+
+    private func jumpToLetter(at y: CGFloat, height: CGFloat, letters: [String], proxy: ScrollViewProxy) {
+        guard !letters.isEmpty, height > 0 else { return }
+        let unit = height / CGFloat(letters.count)
+        let index = Int((y / unit).rounded(.down))
+        let clamped = min(max(index, 0), letters.count - 1)
+        proxy.scrollTo(letters[clamped], anchor: .top)
     }
 }

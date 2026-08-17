@@ -1,4 +1,4 @@
-Third-party origins in EscapeOS (as of 2026-08-14)
+Third-party origins in EscapeOS (as of 2026-08-17)
 
 This project is published under GNU Affero General Public License v3.0
 because tunnel/applist code is adapted from StikDebug (AGPL-3.0). See LICENSE.
@@ -17,3 +17,11 @@ because tunnel/applist code is adapted from StikDebug (AGPL-3.0). See LICENSE.
 3. EscapeOS/Tunnel/libidevice_ffi.a and idevice.h
    Built from jkcoxson/idevice, MIT License.
    https://github.com/jkcoxson/idevice
+
+4. vendor/SWCompression (4.8.6) and vendor/BitByteData (2.0.4)
+   Timofey Solomko, MIT License.
+   Used to extract 7z, tar, gzip, bzip2, xz, lz4, lzma, and zip (non-password).
+   EscapeOS decrypts 7-Zip AES-256 archives (SHA-256 key derivation + AES-CBC)
+   itself; SWCompression only parses those folders.
+   https://github.com/tsolomko/SWCompression
+   https://github.com/tsolomko/BitByteData

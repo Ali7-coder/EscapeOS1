@@ -14,7 +14,7 @@ On-device file browser and App Store app-data backup/restore for sideloaded iOS,
 
 - Lists installed user apps through LocalDevVPN + `pairingFile.plist` in Documents. Search by name or bundle ID; A–Z letters on the right jump the list.
 - Browses an app Data container (`Documents`, `Library`, `tmp`) after consuming a `bad_query` sandbox extension for that container UUID.
-- Creates, previews, edits, and shares files in that container (share keeps the original name). Compress makes a zip of files or folders in the current directory. Tap a zip or IPA to extract it. Select in the top right for multi-select Copy, Cut, Paste, Compress, Duplicate, and Delete. Copy Path / Copy Bundle ID put text on the system clipboard and show a confirmation.
+- Creates, previews, edits, and shares files in that container (share keeps the original name). Compress makes a zip of files and folders in the current directory. Tap zip, 7z, tar, gz, bz2, xz, lz4, lzma, or deb to extract; encrypted zip and 7z ask for a password. RAR is not unpackable. Select in the top right for multi-select Copy, Cut, Paste, Compress, Duplicate, and Delete. Copy Path / Copy Bundle ID put text on the system clipboard and show a confirmation.
 - Exports a zip + `manifest.json` (SHA-256 per file) into Files → On My iPhone → EscapeOS → Backups, and restores that archive into the same app's current container.
 
 ## What it does not do
@@ -89,4 +89,4 @@ After reinstall, place `pairingFile.plist` again from the PC: iPASide Settings �
 
 ## License
 
-[GNU AGPL-3.0](LICENSE). Third-party origins are listed in [NOTICE](NOTICE): StikDebug adaptations (AGPL-3.0), `jkcoxson/idevice` (MIT), and `forcequitOS/bad_query` (no upstream license at adaptation time).
+[GNU AGPL-3.0](LICENSE). Third-party origins are listed in [NOTICE](NOTICE): StikDebug adaptations (AGPL-3.0), `jkcoxson/idevice` (MIT), SWCompression / BitByteData (MIT), and `forcequitOS/bad_query` (no upstream license at adaptation time).

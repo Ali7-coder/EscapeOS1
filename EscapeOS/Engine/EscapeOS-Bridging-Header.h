@@ -9,6 +9,7 @@
 #define EscapeOS_Bridging_Header_h
 
 #include "bad_query.h"
+#include "zip_crypto.h"
 #import "../Tunnel/TunnelContext.h"
 
 #endif /* EscapeOS_Bridging_Header_h */

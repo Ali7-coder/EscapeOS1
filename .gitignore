@@ -9,3 +9,15 @@ _scratch/
 Payload/
 EscapeOS/Tunnel/libidevice_ffi.a
 
+# Vendored upstream: keep Sources + LICENSE, not their test/CI trees
+vendor/**/Tests/
+vendor/**/*.xcodeproj/
+vendor/**/BenchmarksResults/
+vendor/**/azure-pipelines.yml
+vendor/**/.jazzy.yaml
+vendor/**/*.podspec
+vendor/**/Cartfile
+vendor/**/.gitmodules
+vendor/BitByteData/benchmarks.py
+vendor/BitByteData/2-0-Plans.md
+vendor/SWCompression/utils.py

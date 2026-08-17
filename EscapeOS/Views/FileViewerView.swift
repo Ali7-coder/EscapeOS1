@@ -165,7 +165,6 @@ final class FileViewerViewModel: ObservableObject {
                     self.originalData = payload
                     self.isDirty = false
                     self.isSaving = false
-                    self.saveAlert = NamedAlert(title: "Saved", message: "Wrote \(payload.count) bytes to \(item.name).")
                 }
             } catch {
                 DispatchQueue.main.async {

@@ -101,11 +101,9 @@ void startHeartbeat(IdevicePairingFile* pairing_file, IdeviceProviderHandle** pr
         
         if (lastHeartbeatDate && [[NSDate now] timeIntervalSinceDate:lastHeartbeatDate] > current_interval) {
             lastHeartbeatDate = nil;
-//            NSLog(@"[SJ] Heartbeat marco receive timeout, probably disconnected, token = %d, pthread_self = %p", heartbeatToken, pthread_self());
             return;
         }
         lastHeartbeatDate = [NSDate now];
-//        NSLog(@"[SJ] Heartbeat finished at %@, token = %d, pthread_self = %p", lastHeartbeatDate, heartbeatToken, pthread_self());
 
 
         if (!completionCalled) {

@@ -1,14 +1,20 @@
 import Foundation
 import zlib
 
-/// A single entry inside a ZIP archive produced by `ZipWriter`.
-struct ZipEntry {
+/// A single entry inside a ZIP archive.
+struct ZipMember {
     let name: String
     let compressedSize: Int
     let uncompressedSize: Int
     let crc32: UInt32
     let localHeaderOffset: Int
     let compression: Int
+    let flags: UInt16
+    let dosTime: UInt16
+    let aes: ZipAESInfo?
+
+    var isEncrypted: Bool { flags & 0x1 != 0 || compression == 99 || aes != nil }
+    var usesDataDescriptor: Bool { flags & 0x8 != 0 }
 }
 
 /// Errors when reading ZIP archives.
@@ -17,6 +23,8 @@ enum ZipReaderError: Error, LocalizedError {
     case entryNotFound(String)
     case checksumMismatch(String)
     case unsupportedCompression(String)
+    case passwordRequired
+    case wrongPassword
 
     var errorDescription: String? {
         switch self {
@@ -24,6 +32,8 @@ enum ZipReaderError: Error, LocalizedError {
         case .entryNotFound(let n): return "Missing file in archive: \(n)"
         case .checksumMismatch(let n): return "Checksum failed for \(n)"
         case .unsupportedCompression(let n): return "Unsupported compression for \(n)"
+        case .passwordRequired: return "This archive is password-protected."
+        case .wrongPassword: return "Wrong archive password."
         }
     }
 }
@@ -32,7 +42,7 @@ enum ZipReaderError: Error, LocalizedError {
 final class ZipReader {
 
     private let data: Data
-    private(set) var entries: [String: ZipEntry] = [:]
+    private(set) var entries: [String: ZipMember] = [:]
 
     init(url: URL) throws {
         self.data = try Data(contentsOf: url)
@@ -48,14 +58,18 @@ final class ZipReader {
         entries.keys.sorted()
     }
 
-    func readEntry(named name: String) throws -> Data {
+    var needsPassword: Bool {
+        entries.values.contains(where: \.isEncrypted)
+    }
+
+    func readEntry(named name: String, password: String? = nil) throws -> Data {
         guard let entry = entries[name] else {
             throw ZipReaderError.entryNotFound(name)
         }
-        return try readEntry(entry)
+        return try readEntry(entry, password: password)
     }
 
-    func readEntry(_ entry: ZipEntry) throws -> Data {
+    func readEntry(_ entry: ZipMember, password: String? = nil) throws -> Data {
         let localOffset = entry.localHeaderOffset
         guard localOffset + 30 <= data.count else {
             throw ZipReaderError.invalidArchive("Truncated local header for \(entry.name)")
@@ -76,24 +90,48 @@ final class ZipReader {
         }
 
         let stored = data.subdata(in: payloadStart..<payloadEnd)
+        var working = stored
+        var method = compression
+        if entry.isEncrypted {
+            guard let password, !password.isEmpty else {
+                throw ZipReaderError.passwordRequired
+            }
+            if let aes = entry.aes {
+                working = try ZipPassword.decryptAES(ciphertext: stored, password: password, aes: aes)
+                method = aes.compression
+            } else if compression == 99 {
+                throw ZipReaderError.invalidArchive("AES extra field missing for \(entry.name)")
+            } else {
+                working = try ZipPassword.decryptZipCrypto(
+                    ciphertext: stored,
+                    password: password,
+                    crc32: entry.crc32,
+                    dosTime: entry.dosTime,
+                    usesDataDescriptor: entry.usesDataDescriptor
+                )
+            }
+        }
+
         let payload: Data
-        switch compression {
+        switch method {
         case 0:
-            payload = stored
+            payload = working
         case 8:
-            payload = try Self.inflateRaw(stored, expected: entry.uncompressedSize)
+            payload = try Self.inflateRaw(working, expected: entry.uncompressedSize)
         default:
             throw ZipReaderError.unsupportedCompression(entry.name)
         }
 
-        var crc: uLong = crc32(0, nil, 0)
-        payload.withUnsafeBytes { ptr in
-            if let base = ptr.baseAddress {
-                crc = crc32(crc, base.assumingMemoryBound(to: Bytef.self), uInt(payload.count))
+        if entry.crc32 != 0 {
+            var crc: uLong = crc32(0, nil, 0)
+            payload.withUnsafeBytes { ptr in
+                if let base = ptr.baseAddress {
+                    crc = crc32(crc, base.assumingMemoryBound(to: Bytef.self), uInt(payload.count))
+                }
             }
-        }
-        guard UInt32(truncatingIfNeeded: crc) == entry.crc32 else {
-            throw ZipReaderError.checksumMismatch(entry.name)
+            guard UInt32(truncatingIfNeeded: crc) == entry.crc32 else {
+                throw ZipReaderError.checksumMismatch(entry.name)
+            }
         }
         if entry.uncompressedSize > 0, payload.count != entry.uncompressedSize {
             throw ZipReaderError.invalidArchive("Size mismatch for \(entry.name)")
@@ -102,27 +140,22 @@ final class ZipReader {
     }
 
     /// Unpack every entry under `destDir`. Rejects `..` paths.
-    func extract(into destDir: String, files: FileService) throws {
+    func extract(into destDir: String, files: FileService, password: String? = nil) throws {
+        if needsPassword, password == nil || password?.isEmpty == true {
+            throw ZipReaderError.passwordRequired
+        }
         let root = (destDir as NSString).standardizingPath
         try files.createDirectory(at: root)
         var fileCount = 0
         var byteCount: Int64 = 0
         for name in entryNames() {
             if name.isEmpty { continue }
-            let parts = name.split(separator: "/").map(String.init)
-            if parts.contains("..") {
-                throw ZipReaderError.invalidArchive("Unsafe path in zip: \(name)")
-            }
-            let dest = parts.reduce(root) { ($0 as NSString).appendingPathComponent($1) }
-            let destStd = (dest as NSString).standardizingPath
-            guard destStd == root || destStd.hasPrefix(root + "/") else {
-                throw ZipReaderError.invalidArchive("Unsafe path in zip: \(name)")
-            }
-            if name.hasSuffix("/") {
-                try files.createDirectory(at: destStd)
+            let resolved = try ArchiveEntryPath.resolve(name, under: destDir)
+            if resolved.isDirectory {
+                try files.createDirectory(at: resolved.path)
                 continue
             }
-            let payload = try readEntry(named: name)
+            let payload = try readEntry(named: name, password: password)
             fileCount += 1
             byteCount += Int64(payload.count)
             if fileCount > 20_000 {
@@ -131,7 +164,7 @@ final class ZipReader {
             if byteCount > 2_000_000_000 {
                 throw FileServiceError.operationFailed("Extracted data would be larger than 2 GB.")
             }
-            try files.writeFile(data: payload, to: destStd)
+            try files.writeFile(data: payload, to: resolved.path)
         }
     }
 
@@ -205,13 +238,15 @@ final class ZipReader {
 
         var offset = centralOffset
         let end = centralOffset + centralSize
-        var parsed: [String: ZipEntry] = [:]
+        var parsed: [String: ZipMember] = [:]
 
         while offset + 46 <= end {
             let sig = data.readUInt32(at: offset)
             guard sig == 0x02014b50 else { break }
 
+            let flags = data.readUInt16(at: offset + 8)
             let compression = Int(data.readUInt16(at: offset + 10))
+            let dosTime = data.readUInt16(at: offset + 12)
             let crc = data.readUInt32(at: offset + 16)
             let compressed = Int(data.readUInt32(at: offset + 20))
             let uncompressed = Int(data.readUInt32(at: offset + 24))
@@ -232,13 +267,21 @@ final class ZipReader {
                 throw ZipReaderError.invalidArchive("Unreadable entry name")
             }
 
-            parsed[name] = ZipEntry(
+            let extraStart = nameEnd
+            let extraEnd = extraStart + extraLen
+            let extra = extraEnd <= data.count ? data.subdata(in: extraStart..<extraEnd) : Data()
+            let aes = Self.parseAESExtra(extra)
+
+            parsed[name] = ZipMember(
                 name: name,
                 compressedSize: compressed,
                 uncompressedSize: uncompressed,
                 crc32: crc,
                 localHeaderOffset: localHeaderOffset,
-                compression: compression
+                compression: compression,
+                flags: flags,
+                dosTime: dosTime,
+                aes: aes
             )
 
             offset = nameEnd + extraLen + commentLen
@@ -248,6 +291,34 @@ final class ZipReader {
             throw ZipReaderError.invalidArchive("No entries found")
         }
         entries = parsed
+    }
+
+    private static func parseAESExtra(_ extra: Data) -> ZipAESInfo? {
+        var i = 0
+        while i + 4 <= extra.count {
+            let id = extra.readUInt16(at: i)
+            let size = Int(extra.readUInt16(at: i + 2))
+            let bodyStart = i + 4
+            let bodyEnd = bodyStart + size
+            guard bodyEnd <= extra.count else { break }
+            if id == 0x9901, size >= 7 {
+                let vendor = extra.subdata(in: (bodyStart + 2)..<(bodyStart + 4))
+                if vendor == Data([0x41, 0x45]) { // "AE"
+                    let strength = extra[bodyStart + 4]
+                    let method = Int(extra.readUInt16(at: bodyStart + 5))
+                    let bits: Int
+                    switch strength {
+                    case 1: bits = 128
+                    case 2: bits = 192
+                    case 3: bits = 256
+                    default: return nil
+                    }
+                    return ZipAESInfo(keyBits: bits, compression: method)
+                }
+            }
+            i = bodyEnd
+        }
+        return nil
     }
 }
 

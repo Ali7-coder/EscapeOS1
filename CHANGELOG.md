@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.1.4] - 2026-08-17
+
+Production IPA after 0.1.3. Hardware-checked on iPhone 17, iOS 26.5.1 (list, browse, pairing place, extract, A–Z).
+
+### Added
+
+- Password prompt when extracting an encrypted zip (ZipCrypto and WinZip AES-128/192/256) or encrypted 7z (AES-256, including encrypted names).
+- Extract via vendored [SWCompression](https://github.com/tsolomko/SWCompression) 4.8.6: 7z, tar, gzip, bzip2, xz, lz4, lzma, tgz/tbz/txz, and deb. Password zip uses EscapeOS’s own reader. Password 7z uses AES-256 + SHA-256 (same as 7-Zip). RAR is not included (RARLab unrar license).
+
+### Changed
+
+- A–Z letters stay on the right edge; the Apps list scrollbar is hidden so the index receives taps.
+- File rows are tappable across the whole cell. Deleting a **file** does not confirm; **folders** still confirm. File viewer Save no longer shows a success alert.
+- Removed unused UIKit tab-bar shell (Theos ships SwiftUI `TabView`). `.tar.lz4` / `.tar.lzma` unwrap like the other tarballs.
+
+### Fixed
+
+- Archive member paths cannot leave the extract folder (`..`, `\`, absolute names in gzip headers).
+
 ## [0.1.3] - 2026-08-16
 
 Production IPA after 0.1.1. Hardware-checked on iPhone 17, iOS 26.5.1 (list, browse, pairing place).

@@ -19,6 +19,7 @@ struct FileBrowserView: View {
     @State private var selecting = false
     @State private var selected = Set<String>()
     @State private var pendingDelete: [FileItem] = []
+    @State private var archivePassword = ""
 
     init(app: InstalledApp) {
         self.app = app
@@ -114,6 +115,24 @@ struct FileBrowserView: View {
                 selectionBar
             }
         }
+        .overlay {
+            if vm.isBusy {
+                ZStack {
+                    Color.black.opacity(0.28).ignoresSafeArea()
+                    VStack(spacing: 14) {
+                        ProgressView()
+                            .scaleEffect(1.15)
+                        Text(vm.busyTitle)
+                            .font(.headline)
+                    }
+                    .padding(.horizontal, 28)
+                    .padding(.vertical, 22)
+                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                }
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel(vm.busyTitle)
+            }
+        }
         .onAppear { vm.open(vm.currentPath) }
         .background(
             NavigationLink(
@@ -137,6 +156,27 @@ struct FileBrowserView: View {
         }
         .alert(item: $vm.operationError) { err in
             Alert(title: Text("File Operation Failed"), message: Text(err.message), dismissButton: .default(Text("OK")))
+        }
+        .alert("Archive Password", isPresented: Binding(
+            get: { vm.unzipPasswordItem != nil },
+            set: { if !$0 { vm.clearUnzipPasswordPrompt() } }
+        )) {
+            SecureField("Password", text: $archivePassword)
+                .disableAutocorrection(true)
+                .autocapitalization(.none)
+            Button("Cancel", role: .cancel) {
+                archivePassword = ""
+                vm.clearUnzipPasswordPrompt()
+            }
+            Button("Extract") {
+                if let item = vm.unzipPasswordItem {
+                    vm.unzip(item: item, password: archivePassword)
+                }
+                archivePassword = ""
+            }
+            .disabled(archivePassword.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        } message: {
+            Text(vm.unzipPasswordMessage)
         }
         .alert("New \(createKind == .folder ? "Folder" : "File")", isPresented: Binding(
             get: { createKind != nil },
@@ -246,6 +286,7 @@ struct FileBrowserView: View {
                     NavigationLink(destination: FileBrowserView(app: app, initialPath: item.path)) {
                         FileRow(item: item)
                     }
+                    .contentShape(Rectangle())
                     .contextMenu { itemMenu(for: item) }
                 } else if FileContentKind.classify(name: item.name, isDirectory: false) == .archive {
                     Button {
@@ -254,12 +295,14 @@ struct FileBrowserView: View {
                         FileRow(item: item)
                     }
                     .buttonStyle(.plain)
+                    .contentShape(Rectangle())
                     .disabled(vm.isZipping)
                     .contextMenu { itemMenu(for: item) }
                 } else {
                     NavigationLink(destination: FileViewerView(app: app, item: item, mode: .auto)) {
                         FileRow(item: item)
                     }
+                    .contentShape(Rectangle())
                     .contextMenu { itemMenu(for: item) }
                 }
             }
@@ -277,7 +320,18 @@ struct FileBrowserView: View {
     private func deleteAtOffsets(_ offsets: IndexSet) {
         guard !selecting else { return }
         let snapshot = visibleItems
-        pendingDelete = offsets.compactMap { $0 < snapshot.count ? snapshot[$0] : nil }
+        requestDelete(offsets.compactMap { $0 < snapshot.count ? snapshot[$0] : nil })
+    }
+
+    /// Files delete immediately. Folders still confirm — that’s harder to undo.
+    private func requestDelete(_ items: [FileItem]) {
+        guard !items.isEmpty else { return }
+        if items.contains(where: \.isDirectory) {
+            pendingDelete = items
+            return
+        }
+        vm.delete(items: items)
+        selected.subtract(items.map(\.path))
     }
 
     private var selectionBar: some View {
@@ -355,7 +409,7 @@ struct FileBrowserView: View {
                 }
                 .disabled(selectedItems.isEmpty)
                 selectionAction("Delete", "trash", enabled: !selectedItems.isEmpty, destructive: true) {
-                    pendingDelete = selectedItems
+                    requestDelete(selectedItems)
                 }
             }
             .padding(.horizontal, 4)
@@ -495,7 +549,7 @@ struct FileBrowserView: View {
                 Label("Rename", systemImage: "pencil")
             }
             Button(role: .destructive) {
-                pendingDelete = [item]
+                requestDelete([item])
             } label: {
                 Label("Delete", systemImage: "trash")
             }
@@ -535,8 +589,11 @@ struct FileRow: View {
                 .font(.caption)
                 .foregroundColor(.secondary)
             }
+            Spacer(minLength: 0)
         }
         .padding(.vertical, 2)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
     }
 
     private var kind: FileContentKind {
@@ -577,9 +634,14 @@ final class FileBrowserViewModel: ObservableObject {
     @Published var sharePayload: SharePayload?
     @Published var isExporting = false
     @Published var isZipping = false
+    @Published var isPasting = false
+    @Published var busyTitle = "Working…"
     @Published var exportError: IdentifiedError?
     @Published var operationError: IdentifiedError?
-    @Published var isPasting = false
+    @Published var unzipPasswordItem: FileItem?
+    @Published var unzipPasswordMessage = "This archive is password-protected. Enter the password to extract it."
+
+    var isBusy: Bool { isZipping || isExporting || isPasting }
 
     let app: InstalledApp
     private let escape = SandboxEscape()
@@ -667,6 +729,7 @@ final class FileBrowserViewModel: ObservableObject {
     func paste() {
         guard let clip = FileClipboard.shared.payload, !clip.items.isEmpty else { return }
         isPasting = true
+        busyTitle = "Pasting…"
         let destDir = currentPath
         let destContainer = app.containerPath
         DispatchQueue.global(qos: .userInitiated).async {
@@ -774,6 +837,9 @@ final class FileBrowserViewModel: ObservableObject {
     }
 
     func importFiles(from urls: [URL]) {
+        guard !urls.isEmpty else { return }
+        isZipping = true
+        busyTitle = urls.count == 1 ? "Importing…" : "Importing \(urls.count) items…"
         DispatchQueue.global(qos: .userInitiated).async {
             do {
                 try self.escape.withHandle(for: self.app.containerPath) { _ in
@@ -789,10 +855,12 @@ final class FileBrowserViewModel: ObservableObject {
                     }
                 }
                 DispatchQueue.main.async {
+                    self.isZipping = false
                     self.open(self.currentPath)
                 }
             } catch {
                 DispatchQueue.main.async {
+                    self.isZipping = false
                     self.operationError = IdentifiedError(message: error.localizedDescription)
                 }
             }
@@ -801,6 +869,7 @@ final class FileBrowserViewModel: ObservableObject {
 
     func export(item: FileItem) {
         isExporting = true
+        busyTitle = "Preparing…"
         exportError = nil
         DispatchQueue.global(qos: .userInitiated).async {
             do {
@@ -837,6 +906,7 @@ final class FileBrowserViewModel: ObservableObject {
     func zip(items: [FileItem]) {
         guard !items.isEmpty, !isZipping else { return }
         isZipping = true
+        busyTitle = items.count == 1 ? "Compressing…" : "Compressing \(items.count) items…"
         operationError = nil
         DispatchQueue.global(qos: .userInitiated).async {
             do {
@@ -872,29 +942,37 @@ final class FileBrowserViewModel: ObservableObject {
         }
     }
 
-    func unzip(item: FileItem) {
+    func clearUnzipPasswordPrompt() {
+        unzipPasswordItem = nil
+        unzipPasswordMessage = "This archive is password-protected. Enter the password to extract it."
+    }
+
+    func unzip(item: FileItem, password: String? = nil) {
         guard !isZipping else { return }
         isZipping = true
+        busyTitle = "Extracting…"
         operationError = nil
         DispatchQueue.global(qos: .userInitiated).async {
             do {
                 let destName: String = try self.escape.withHandle(for: self.app.containerPath) { _ in
-                    let preferred = (item.name as NSString).deletingPathExtension
+                    let bytes = try self.files.readFile(at: item.path)
+                    if ArchiveExtractor.archiveNeedsPassword(bytes, name: item.name),
+                       password == nil || password?.isEmpty == true {
+                        throw ZipReaderError.passwordRequired
+                    }
+                    let preferred = ArchiveExtractor.folderName(from: item.name)
                     let dest = self.files.uniqueDestination(
                         in: self.currentPath,
                         preferredName: preferred.isEmpty ? "Archive" : preferred
                     )
-                    let bytes = try self.files.readFile(at: item.path)
-                    let reader: ZipReader
                     do {
-                        reader = try ZipReader(data: bytes)
-                    } catch {
-                        throw FileServiceError.operationFailed(
-                            "Can’t extract “\(item.name)”. Zip and IPA work; use Open as Hex for other archives."
+                        try ArchiveExtractor.extract(
+                            data: bytes,
+                            originalName: item.name,
+                            into: dest,
+                            files: self.files,
+                            password: password
                         )
-                    }
-                    do {
-                        try reader.extract(into: dest, files: self.files)
                     } catch {
                         try? FileManager.default.removeItem(atPath: dest)
                         throw error
@@ -903,8 +981,21 @@ final class FileBrowserViewModel: ObservableObject {
                 }
                 DispatchQueue.main.async {
                     self.isZipping = false
+                    self.clearUnzipPasswordPrompt()
                     CopyFeedback.shared.show("Extracted to “\(destName)”")
                     self.open(self.currentPath)
+                }
+            } catch ZipReaderError.passwordRequired {
+                DispatchQueue.main.async {
+                    self.isZipping = false
+                    self.unzipPasswordMessage = "This archive is password-protected. Enter the password to extract it."
+                    self.unzipPasswordItem = item
+                }
+            } catch ZipReaderError.wrongPassword {
+                DispatchQueue.main.async {
+                    self.isZipping = false
+                    self.unzipPasswordMessage = "Wrong password. Try again."
+                    self.unzipPasswordItem = item
                 }
             } catch {
                 DispatchQueue.main.async {

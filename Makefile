@@ -31,10 +31,19 @@ EscapeOS_FILES = \
 	EscapeOS/Engine/AppDiscovery.swift \
 	EscapeOS/Engine/BackupService.swift \
 	EscapeOS/Engine/ZipWriter.swift \
+	EscapeOS/Engine/ZipPassword.swift \
+	EscapeOS/Engine/SevenZipAES.swift \
+	EscapeOS/Engine/ArchiveExtractor.swift \
+	EscapeOS/Engine/zip_crypto.c \
 	EscapeOS/Engine/bad_query.c \
 	EscapeOS/Tunnel/TunnelContext.m \
 	EscapeOS/Tunnel/applist.m \
 	EscapeOS/Tunnel/heartbeat.m
+
+EscapeOS_FILES += $(shell find vendor/BitByteData/Sources vendor/SWCompression/Sources -name '*.swift' \
+	! -name 'TarWriter.swift' ! -name 'TarReader.swift' ! -name 'TarCreateError.swift' \
+	! -name 'ZlibArchive.swift' ! -name 'ZlibError.swift' ! -name 'ZlibHeader.swift' \
+	! -name 'BigEndianByteReader.swift')
 
 EscapeOS_SWIFT_BRIDGING_HEADER = EscapeOS/Engine/EscapeOS-Bridging-Header.h
 EscapeOS_CFLAGS = -IEscapeOS/Engine -IEscapeOS/Tunnel

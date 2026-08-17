@@ -212,7 +212,10 @@ final class FileService {
     }
 
     /// Next unused path in `directory` for `preferredName` (`foo.txt` → `foo 2.txt`).
+    /// Uses only the last path component so `/abs` or `../x` cannot leave `directory`.
     func uniqueDestination(in directory: String, preferredName: String) -> String {
+        let leaf = (preferredName as NSString).lastPathComponent
+        let preferredName = FileNameRules.sanitize(leaf) ?? "extracted"
         let ns = preferredName as NSString
         let base = ns.deletingPathExtension
         let ext = ns.pathExtension

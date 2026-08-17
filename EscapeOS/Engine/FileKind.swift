@@ -26,17 +26,6 @@ enum FileContentKind: String {
     case database
     case binary
 
-    var defaultOpenMode: FileOpenMode {
-        switch self {
-        case .directory: return .auto
-        case .image: return .image
-        case .pdf: return .pdf
-        case .audio, .video: return .media
-        case .text, .plist, .json, .xml: return .text
-        case .archive, .database, .binary: return .hex
-        }
-    }
-
     var symbolName: String {
         switch self {
         case .directory: return "folder.fill"
@@ -85,7 +74,8 @@ enum FileContentKind: String {
     static let jsonExtensions: Set<String> = ["json", "jsonl"]
     static let xmlExtensions: Set<String> = ["xml", "html", "htm", "xhtml", "svg"]
     static let archiveExtensions: Set<String> = [
-        "zip", "ipa", "deb", "tar", "gz", "tgz", "bz2", "7z", "rar", "xz"
+        "zip", "ipa", "apk", "jar", "deb", "tar", "gz", "tgz", "bz2", "tbz", "tbz2",
+        "7z", "rar", "xz", "txz", "lz4", "lzma"
     ]
     static let databaseExtensions: Set<String> = [
         "db", "sqlite", "sqlite3", "realm", "wal", "shm"
@@ -109,5 +99,24 @@ enum FileNameRules {
             return nil
         }
         return trimmed
+    }
+}
+
+/// Resolves an archive member name under `destDir`. Rejects `..` and paths that escape the folder.
+enum ArchiveEntryPath {
+    static func resolve(_ entryName: String, under destDir: String) throws -> (path: String, isDirectory: Bool) {
+        let root = (destDir as NSString).standardizingPath
+        let normalized = entryName.replacingOccurrences(of: "\\", with: "/")
+        let isDirectory = normalized.hasSuffix("/")
+        let parts = normalized.split(separator: "/").map(String.init)
+        if parts.contains("..") {
+            throw FileServiceError.operationFailed("Unsafe path in archive: \(entryName)")
+        }
+        let dest = parts.reduce(root) { ($0 as NSString).appendingPathComponent($1) }
+        let destStd = (dest as NSString).standardizingPath
+        guard destStd == root || destStd.hasPrefix(root + "/") else {
+            throw FileServiceError.operationFailed("Unsafe path in archive: \(entryName)")
+        }
+        return (destStd, isDirectory)
     }
 }

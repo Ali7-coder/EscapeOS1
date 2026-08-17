@@ -9,10 +9,8 @@ struct BackupManifestEntry: Codable {
     let sha256: String
 }
 
-/// Minimal ZIP archive writer (store, no compression) used by the backup
-/// service so we have no external dependencies. Writes standard local file
-/// headers + central directory. Files are stored uncompressed (DEFLATE adds
-/// little for already-compressed app data and keeps this code auditable).
+/// Store-only ZIP writer for backups and Compress. Files are stored uncompressed
+/// (DEFLATE adds little for already-compressed app data).
 final class ZipWriter {
 
     private var fileHandle: FileHandle?
@@ -211,10 +209,10 @@ final class ZipWriter {
 private extension Data {
     mutating func appendLE(_ value: UInt16) {
         var v = value.littleEndian
-        append(UnsafeBufferPointer(start: &v, count: 1))
+        Swift.withUnsafeBytes(of: &v) { append(contentsOf: $0) }
     }
     mutating func appendLE(_ value: UInt32) {
         var v = value.littleEndian
-        append(UnsafeBufferPointer(start: &v, count: 1))
+        Swift.withUnsafeBytes(of: &v) { append(contentsOf: $0) }
     }
 }
