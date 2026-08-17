@@ -153,8 +153,13 @@ struct PairingSetupView: View {
         .fileImporter(
             isPresented: $showImporter,
             allowedContentTypes: [
-                UTType(filenameExtension: "mobiledevicepairing", conformingTo: .data) ?? .data,
-                .propertyList
+                .item,
+                .data,
+                .content,
+                .propertyList,
+                .xml,
+                .text,
+                UTType(filenameExtension: "mobiledevicepairing", conformingTo: .data) ?? .data
             ]
         ) { result in
             switch result {
@@ -162,7 +167,23 @@ struct PairingSetupView: View {
                 do {
                     let accessing = url.startAccessingSecurityScopedResource()
                     defer { if accessing { url.stopAccessingSecurityScopedResource() } }
-                    let contents = try String(contentsOf: url)
+                    let data = try Data(contentsOf: url)
+                    let contents: String
+                    if let utf8 = String(data: data, encoding: .utf8), !utf8.isEmpty {
+                        contents = utf8
+                    } else if let xml = try? PropertyListSerialization.data(
+                        fromPropertyList: try PropertyListSerialization.propertyList(from: data, options: [], format: nil),
+                        format: .xml,
+                        options: 0
+                    ), let text = String(data: xml, encoding: .utf8) {
+                        contents = text
+                    } else {
+                        throw NSError(
+                            domain: "EscapeOS",
+                            code: -2,
+                            userInfo: [NSLocalizedDescriptionKey: "Could not read that pairing file."]
+                        )
+                    }
                     try viewModel.importPairingFile(contents)
                     importError = nil
                     viewModel.reload()

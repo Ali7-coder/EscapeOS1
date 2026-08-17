@@ -19,6 +19,7 @@ Production IPA after 0.1.3. Hardware-checked on iPhone 17, iOS 26.5.1 (list, bro
 
 - Archive member paths cannot leave the extract folder (`..`, `\`, absolute names in gzip headers).
 - Password prompt always shows **Extract** (iOS 26 hides disabled alert actions, so an empty-field disable left only Cancel).
+- Import Pairing File uses the same Files picker types as Import from Files, so `pairingFile.plist` and iLoader `.mobiledevicepairing` can be selected.
 
 ## [0.1.3] - 2026-08-16
 
