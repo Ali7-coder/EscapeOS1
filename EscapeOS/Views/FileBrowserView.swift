@@ -174,7 +174,6 @@ struct FileBrowserView: View {
                 }
                 archivePassword = ""
             }
-            .disabled(archivePassword.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         } message: {
             Text(vm.unzipPasswordMessage)
         }
