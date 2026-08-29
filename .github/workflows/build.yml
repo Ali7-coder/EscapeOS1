@@ -17,46 +17,17 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Show available Xcode versions
+      - name: Show Xcode and Swift
         run: |
-          echo "Installed Xcode versions:"
-          ls -d /Applications/Xcode*.app 2>/dev/null || true
-
-          echo
-          echo "Current Xcode:"
+          echo "======================================"
+          echo "XCODE"
+          echo "======================================"
           xcodebuild -version
 
           echo
-          echo "Current Swift:"
-          swift --version
-
-      - name: Select compatible Xcode
-        run: |
-          if [ -d "/Applications/Xcode_16.4.app" ]; then
-            sudo xcode-select -s "/Applications/Xcode_16.4.app/Contents/Developer"
-          elif [ -d "/Applications/Xcode_16.3.app" ]; then
-            sudo xcode-select -s "/Applications/Xcode_16.3.app/Contents/Developer"
-          elif [ -d "/Applications/Xcode_16.2.app" ]; then
-            sudo xcode-select -s "/Applications/Xcode_16.2.app/Contents/Developer"
-          elif [ -d "/Applications/Xcode_16.1.app" ]; then
-            sudo xcode-select -s "/Applications/Xcode_16.1.app/Contents/Developer"
-          else
-            echo "No expected Xcode 16.x installation was found."
-            echo "Available Xcode installations:"
-            ls -d /Applications/Xcode*.app 2>/dev/null || true
-            exit 1
-          fi
-
-          echo
-          echo "Selected developer directory:"
-          xcode-select -p
-
-          echo
-          echo "Selected Xcode:"
-          xcodebuild -version
-
-          echo
-          echo "Selected Swift:"
+          echo "======================================"
+          echo "SWIFT"
+          echo "======================================"
           swift --version
 
       - name: Remove untrusted tap
@@ -76,7 +47,49 @@ jobs:
         env:
           HOMEBREW_NO_REQUIRE_TAP_TRUST: 1
 
-      - name: Verify Theos and SDK
+      - name: Install iPhoneOS 18.6 SDK
+        run: |
+          set -e
+
+          export THEOS="${{ github.workspace }}/theos"
+
+          echo "======================================"
+          echo "Installing iPhoneOS 18.6 SDK"
+          echo "======================================"
+
+          rm -rf iOS-SDKs
+
+          git clone \
+            --depth=1 \
+            --filter=blob:none \
+            --sparse \
+            https://github.com/Tonwalter888/iOS-SDKs.git \
+            iOS-SDKs
+
+          cd iOS-SDKs
+
+          git sparse-checkout set iPhoneOS18.6.sdk
+
+          SDK_PATH="$(pwd)/iPhoneOS18.6.sdk"
+
+          if [ ! -d "$SDK_PATH" ]; then
+            echo "ERROR: iPhoneOS18.6.sdk was not downloaded."
+            exit 1
+          fi
+
+          cp -R "$SDK_PATH" "$THEOS/sdks/"
+
+          cd ..
+
+          echo
+          echo "Installed SDKs:"
+          find "$THEOS/sdks" -maxdepth 1 -type d -name "iPhoneOS*.sdk" -print
+
+          echo
+          echo "Checking iPhoneOS18.6.sdk:"
+          ls -ld "$THEOS/sdks/iPhoneOS18.6.sdk"
+
+      - name: Verify SDK
         run: |
           export THEOS="${{ github.workspace }}/theos"
 
@@ -87,38 +100,66 @@ jobs:
 
           echo
           echo "======================================"
-          echo "XCODE"
+          echo "AVAILABLE IPHONE SDKs"
           echo "======================================"
-          xcodebuild -version
+
+          find "$THEOS/sdks" \
+            -maxdepth 1 \
+            -type d \
+            -name "iPhoneOS*.sdk" \
+            -print \
+            | sort -V
 
           echo
           echo "======================================"
-          echo "SWIFT"
+          echo "iPhoneOS18.6 SDK"
           echo "======================================"
-          swift --version
 
-          echo
-          echo "======================================"
-          echo "AVAILABLE THEOS SDKS"
-          echo "======================================"
-          find "$THEOS/sdks" -maxdepth 1 -type d -print
+          if [ ! -d "$THEOS/sdks/iPhoneOS18.6.sdk" ]; then
+            echo "ERROR: iPhoneOS18.6.sdk does not exist."
+            exit 1
+          fi
 
-          echo
-          echo "======================================"
-          echo "IPHONEOS 16.5 SDK"
-          echo "======================================"
-          ls -ld "$THEOS/sdks/iPhoneOS16.5.sdk" || true
+          ls -ld "$THEOS/sdks/iPhoneOS18.6.sdk"
 
       - name: Build with Theos
         env:
           ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true
           THEOS_VERBOSE: 1
         run: |
+          set -e
+
           export THEOS="${{ github.workspace }}/theos"
+
+          echo "======================================"
+          echo "BUILD CONFIGURATION"
+          echo "======================================"
+
+          echo "THEOS=$THEOS"
+          echo "SDKVERSION=18.6"
+          echo "Xcode:"
+          xcodebuild -version
+
+          echo
+          echo "Swift:"
+          swift --version
+
+          echo
+          echo "======================================"
+          echo "CLEAN"
+          echo "======================================"
 
           make clean || true
 
-          make package FINALPACKAGE=1 -j1
+          echo
+          echo "======================================"
+          echo "BUILD"
+          echo "======================================"
+
+          make package \
+            FINALPACKAGE=1 \
+            SDKVERSION=18.6 \
+            -j1
 
       - name: Find generated files
         run: |
@@ -146,7 +187,7 @@ jobs:
         run: |
           set -e
 
-          IPA=$(find . -type f -name "*.ipa" -print -quit)
+          IPA="$(find . -type f -name "*.ipa" -print -quit)"
 
           if [ -z "$IPA" ]; then
             echo "ERROR: No IPA was generated."
