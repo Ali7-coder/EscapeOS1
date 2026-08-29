@@ -12,16 +12,19 @@ jobs:
   build:
     runs-on: macos-latest
     steps:
-      # الخطوة 1: استلام الكود (باستخدام الإصدار الجديد)
       - name: Checkout code
-        uses: actions/checkout@v5
+        uses: actions/checkout@v4
+        env:
+          # تجاوز تحذير Node.js 20
+          ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true
 
-      # الخطوة 2: تثبيت الأدوات المفقودة (الحل الأساسي)
-      - name: Install missing tools
+      # هذه الخطوة لم تعد ضرورية، لأن gzip مثبتة مسبقاً
+      # لكننا نتركها للتوثيق، ونزيل tar
+      - name: Ensure tools are available
         run: |
-          brew install gzip tar
+          # نتأكد فقط من أن gzip موجودة، وهي عادة موجودة
+          which gzip || brew install gzip
 
-      # الخطوة 3: تهيئة بيئة Theos
       - name: Setup Theos
         uses: Randomblock1/theos-action@v1
         with:
@@ -31,7 +34,6 @@ jobs:
         env:
           HOMEBREW_NO_REQUIRE_TAP_TRUST: 1
 
-      # الخطوة 4: بناء التطبيق باستخدام Theos
       - name: Build with Theos
         run: |
           export THEOS=${{ github.workspace }}/theos
@@ -39,14 +41,12 @@ jobs:
         env:
           ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true
 
-      # الخطوة 5: رفع ملف الـ IPA كقطعة أثرية
       - name: Upload IPA as Artifact
         uses: actions/upload-artifact@v4
         with:
           name: EscapeOSPro-IPA
           path: ./*.ipa
 
-      # الخطوة 6: إنشاء إصدار ورفع الملف
       - name: Create Release and Upload IPA
         run: |
           TAG_NAME="build-${{ github.run_number }}"
