@@ -1,116 +1,126 @@
 name: Build EscapeOSPro
 
 on:
-push:
-branches:
-- main
-workflow_dispatch:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
 
 permissions:
-contents: write
+  contents: write
 
 jobs:
-build:
-runs-on: macos-13
+  build:
+    runs-on: macos-13
 
-steps:
-  - name: Checkout code
-    uses: actions/checkout@v4
-  - name: Select Xcode
-    run: |
-      sudo xcode-select -s /Applications/Xcode_14.3.1.app/Contents/Developer
-      xcode-select -p
-      xcodebuild -version
-      swift --version
-  - name: Remove untrusted tap
-    run: |
-      brew untap aws/tap || true
-  - name: Install required build tools
-    run: |
-      brew install gzip ldid dpkg
-  - name: Setup Theos
-    uses: Randomblock1/theos-action@v1
-    with:
-      theos-dir: '${{ github.workspace }}/theos'
-      theos-src: 'https://github.com/theos/theos'
-      theos-sdks: 'https://github.com/theos/sdks'
-    env:
-      HOMEBREW_NO_REQUIRE_TAP_TRUST: 1
-  - name: Verify environment
-    run: |
-      export THEOS="${{ github.workspace }}/theos"
-      echo "======================================"
-      echo "Xcode"
-      echo "======================================"
-      xcodebuild -version
-      echo
-      echo "======================================"
-      echo "Swift"
-      echo "======================================"
-      swift --version
-      echo
-      echo "======================================"
-      echo "Theos"
-      echo "======================================"
-      echo "THEOS=$THEOS"
-      ls -la "$THEOS"
-      echo
-      echo "======================================"
-      echo "SDKs"
-      echo "======================================"
-      ls -la "$THEOS/sdks"
-  - name: Build with Theos
-    env:
-      ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true
-      THEOS_VERBOSE: 1
-    run: |
-      export THEOS="${{ github.workspace }}/theos"
-      make clean || true
-      make package FINALPACKAGE=1 -j1
-  - name: Find generated files
-    run: |
-      echo "======================================"
-      echo "IPA"
-      echo "======================================"
-      find . -type f -name "*.ipa" -print || true
-      echo
-      echo "======================================"
-      echo "DEB"
-      echo "======================================"
-      find . -type f -name "*.deb" -print || true
-      echo
-      echo "======================================"
-      echo "APP"
-      echo "======================================"
-      find . -type d -name "*.app" -print || true
-  - name: Prepare IPA
-    run: |
-      set -e
-      IPA=$(find . -type f -name "*.ipa" -print -quit)
-      if [ -z "$IPA" ]; then
-        echo "ERROR: No IPA was generated."
-        echo
-        echo "Generated files:"
-        find . -type f | sort
-        exit 1
-      fi
-      echo "Found IPA:"
-      echo "$IPA"
-      cp "$IPA" EscapeOSPro.ipa
-      ls -lh EscapeOSPro.ipa
-  - name: Upload IPA
-    uses: actions/upload-artifact@v4
-    with:
-      name: EscapeOSPro-IPA
-      path: EscapeOSPro.ipa
-      if-no-files-found: error
-  - name: Create Release
-    env:
-      GH_TOKEN: ${{ github.token }}
-    run: |
-      TAG_NAME="build-${{ github.run_number }}"
-      gh release create "$TAG_NAME" \
-        EscapeOSPro.ipa \
-        --title "EscapeOSPro ${{ github.run_number }}" \
-        --prerelease \
-        --generate-notes
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: |
+          sudo xcode-select -s /Applications/Xcode_14.3.1.app/Contents/Developer
+          echo "Xcode path:"
+          xcode-select -p
+          echo "Xcode version:"
+          xcodebuild -version
+          echo "Swift version:"
+          swift --version
+
+      - name: Remove untrusted tap
+        run: |
+          brew untap aws/tap || true
+
+      - name: Install required build tools
+        run: |
+          brew install gzip ldid dpkg
+
+      - name: Setup Theos
+        uses: Randomblock1/theos-action@v1
+        with:
+          theos-dir: '${{ github.workspace }}/theos'
+          theos-src: 'https://github.com/theos/theos'
+          theos-sdks: 'https://github.com/theos/sdks'
+        env:
+          HOMEBREW_NO_REQUIRE_TAP_TRUST: 1
+
+      - name: Verify environment
+        run: |
+          export THEOS="${{ github.workspace }}/theos"
+
+          echo "======================================"
+          echo "Xcode"
+          echo "======================================"
+          xcodebuild -version
+
+          echo "======================================"
+          echo "Swift"
+          echo "======================================"
+          swift --version
+
+          echo "======================================"
+          echo "Theos"
+          echo "======================================"
+          echo "THEOS=$THEOS"
+          ls -la "$THEOS"
+
+          echo "======================================"
+          echo "SDKs"
+          echo "======================================"
+          ls -la "$THEOS/sdks"
+
+      - name: Build with Theos
+        env:
+          ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true
+          THEOS_VERBOSE: 1
+        run: |
+          export THEOS="${{ github.workspace }}/theos"
+
+          make clean || true
+          make package FINALPACKAGE=1 -j1
+
+      - name: Find generated files
+        run: |
+          echo "IPA files:"
+          find . -type f -name "*.ipa" -print || true
+
+          echo "DEB files:"
+          find . -type f -name "*.deb" -print || true
+
+          echo "APP bundles:"
+          find . -type d -name "*.app" -print || true
+
+      - name: Prepare IPA
+        run: |
+          set -e
+
+          IPA=$(find . -type f -name "*.ipa" -print -quit)
+
+          if [ -z "$IPA" ]; then
+            echo "ERROR: No IPA was generated."
+            echo "Generated files:"
+            find . -type f | sort
+            exit 1
+          fi
+
+          echo "Found IPA: $IPA"
+          cp "$IPA" EscapeOSPro.ipa
+          ls -lh EscapeOSPro.ipa
+
+      - name: Upload IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: EscapeOSPro-IPA
+          path: EscapeOSPro.ipa
+          if-no-files-found: error
+
+      - name: Create Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG_NAME="build-${{ github.run_number }}"
+
+          gh release create "$TAG_NAME" \
+            EscapeOSPro.ipa \
+            --title "EscapeOSPro ${{ github.run_number }}" \
+            --
