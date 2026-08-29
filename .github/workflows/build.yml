@@ -13,7 +13,12 @@ jobs:
     runs-on: macos-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v5   # تم الترقية من v4 إلى v5 لحل تحذير Node.js 20[reference:5]
+        uses: actions/checkout@v5
+
+      # الخطوة الجديدة: إزالة المصدر غير الموثوق
+      - name: Remove untrusted tap
+        run: |
+          brew untap aws/tap || true
 
       - name: Install missing build tools
         run: |
@@ -33,7 +38,6 @@ jobs:
           export THEOS=${{ github.workspace }}/theos
           make package FINALPACKAGE=1
         env:
-          # تجاوز تحذير Node.js 20 (حل مؤقت)
           ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true
 
       - name: Upload IPA as Artifact
