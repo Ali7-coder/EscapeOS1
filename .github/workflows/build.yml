@@ -18,6 +18,8 @@ jobs:
           theos-dir: '${{ github.workspace }}/theos'
           theos-src: 'https://github.com/theos/theos'
           theos-sdks: 'https://github.com/theos/sdks'
+        env:
+          HOMEBREW_NO_REQUIRE_TAP_TRUST: 1
 
       - name: Build with Theos
         run: |
