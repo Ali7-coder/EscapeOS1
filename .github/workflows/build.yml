@@ -1,27 +1,21 @@
-# اسم سير العمل
 name: Build EscapeOSPro
 
-# متى يتم تشغيله تلقائياً أو يدوياً
 on:
   push:
     branches: [ "main" ]
   workflow_dispatch:
 
-# الصلاحيات المطلوبة لإنشاء الإصدارات
 permissions:
   contents: write
 
-# تعريف المهام (Jobs)
 jobs:
-  build:
-    # بيئة التشغيل: أحدث إصدار من macOS
+  build-and-release:
     runs-on: macos-latest
     steps:
-      # الخطوة 1: استلام الكود من المستودع
       - name: Checkout code
-        uses: actions/checkout@v4
+        # استخدام الإصدار v5 الذي يعمل على Node.js 24 مباشرة [citation:13]
+        uses: actions/checkout@v5
 
-      # الخطوة 2: تهيئة بيئة Theos
       - name: Setup Theos
         uses: Randomblock1/theos-action@v1
         with:
@@ -29,33 +23,28 @@ jobs:
           theos-src: 'https://github.com/theos/theos'
           theos-sdks: 'https://github.com/theos/sdks'
         env:
-          # تجاوز مشكلة الثقة في Homebrew
+          # حل مشكلة ثقة Homebrew في بيئة البناء [citation:3]
           HOMEBREW_NO_REQUIRE_TAP_TRUST: 1
 
-      # الخطوة 3: بناء التطبيق باستخدام Theos
       - name: Build with Theos
         run: |
           export THEOS=${{ github.workspace }}/theos
           make package FINALPACKAGE=1
-        env:
-          # تجاوز تحذير Node.js 20 (حل مؤقت)
-          ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true
 
-      # الخطوة 4: رفع ملف الـ IPA كقطعة أثرية مؤقتة (للتحميل المباشر)
       - name: Upload IPA as Artifact
+        # الإصدار v4 يعمل على Node.js 24 بشكل طبيعي [citation:13]
         uses: actions/upload-artifact@v4
         with:
           name: EscapeOSPro-IPA
           path: ./*.ipa
 
-      # الخطوة 5: رفع ملف الـ IPA إلى قسم Releases
-      - name: Upload IPA to Release
-        uses: softprops/action-gh-release@v2
-        with:
-          files: ./*.ipa
-          name: "EscapeOSPro ${{ github.run_number }}"
-          tag_name: "v${{ github.run_number }}"
-          draft: false
-          prerelease: true
+      - name: Create Release and Upload IPA
+        # إجراء آخر يعتمد على الأوامر الأساسية، وهو أكثر استقرارًا
+        run: |
+          TAG_NAME="build-${{ github.run_number }}"
+          gh release create "$TAG_NAME" ./*.ipa \
+            --title "EscapeOSPro ${{ github.run_number }}" \
+            --prerelease \
+            --generate-notes
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
