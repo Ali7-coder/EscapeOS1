@@ -1,156 +1,81 @@
 name: Build EscapeOSPro
-
 on:
-push:
-branches:
-- main
-workflow_dispatch:
-
+  push:
+    branches:
+      - main
+  workflow_dispatch:
 permissions:
-contents: write
-
+  contents: write
 jobs:
-build:
-runs-on: macos-latest
-
-steps:
-  # --------------------------------------------------
-  # 1. Checkout
-  # --------------------------------------------------
-  - name: Checkout
-    uses: actions/checkout@v4
-  # --------------------------------------------------
-  # 2. Install required tools
-  # --------------------------------------------------
-  - name: Install build dependencies
-    run: |
-      brew update
-      brew install ldid dpkg gzip
-  # --------------------------------------------------
-  # 3. Install Theos + SDKs
-  # --------------------------------------------------
-  - name: Setup Theos
-    uses: Randomblock1/theos-action@v1
-    with:
-      theos-dir: ${{ github.workspace }}/theos
-      theos-src: https://github.com/theos/theos
-      theos-sdks: https://github.com/theos/sdks
-      theos-sdks-branch: master
-    env:
-      HOMEBREW_NO_REQUIRE_TAP_TRUST: 1
-  # --------------------------------------------------
-  # 4. Verify environment
-  # --------------------------------------------------
-  - name: Verify Theos environment
-    shell: bash
-    run: |
-      export THEOS="${{ github.workspace }}/theos"
-      echo "======================================"
-      echo "THEOS"
-      echo "======================================"
-      echo "$THEOS"
-      echo
-      echo "======================================"
-      echo "Theos version"
-      echo "======================================"
-      git -C "$THEOS" rev-parse --short HEAD || true
-      echo
-      echo "======================================"
-      echo "Available SDKs"
-      echo "======================================"
-      find "$THEOS/sdks" -maxdepth 1 -type d -print || true
-      echo
-      echo "======================================"
-      echo "Project files"
-      echo "======================================"
-      find . -maxdepth 2 -type f | sort
-  # --------------------------------------------------
-  # 5. Clean previous build
-  # --------------------------------------------------
-  - name: Clean
-    shell: bash
-    run: |
-      export THEOS="${{ github.workspace }}/theos"
-      make clean || true
-      rm -rf packages
-      rm -rf .theos
-  # --------------------------------------------------
-  # 6. Build
-  # --------------------------------------------------
-  - name: Build EscapeOSPro
-    shell: bash
-    env:
-      THEOS_VERBOSE: 1
-    run: |
-      export THEOS="${{ github.workspace }}/theos"
-      echo "Building EscapeOSPro..."
-      make package FINALPACKAGE=1 -j1
-  # --------------------------------------------------
-  # 7. Show generated files
-  # --------------------------------------------------
-  - name: Inspect build output
-    shell: bash
-    run: |
-      echo "======================================"
-      echo "IPA files"
-      echo "======================================"
-      find . -type f -name "*.ipa" -print || true
-      echo
-      echo "======================================"
-      echo "DEB files"
-      echo "======================================"
-      find . -type f -name "*.deb" -print || true
-      echo
-      echo "======================================"
-      echo "APP bundles"
-      echo "======================================"
-      find . -type d -name "*.app" -print || true
-      echo
-      echo "======================================"
-      echo "packages/"
-      echo "======================================"
-      find packages -maxdepth 2 -type f -print 2>/dev/null || true
-  # --------------------------------------------------
-  # 8. Find IPA and copy it to predictable location
-  # --------------------------------------------------
-  - name: Prepare IPA
-    shell: bash
-    run: |
-      set -e
-      IPA="$(find . -type f -name "*.ipa" -print -quit)"
-      if [ -z "$IPA" ]; then
-        echo "ERROR: No IPA was generated."
-        echo
-        echo "Generated files:"
-        find . -type f | sort
-        exit 1
-      fi
-      echo "Found IPA:"
-      echo "$IPA"
-      cp "$IPA" "EscapeOSPro.ipa"
-      echo
-      echo "Final IPA:"
-      ls -lh EscapeOSPro.ipa
-  # --------------------------------------------------
-  # 9. Upload IPA as GitHub Artifact
-  # --------------------------------------------------
-  - name: Upload IPA artifact
-    uses: actions/upload-artifact@v4
-    with:
-      name: EscapeOSPro-IPA
-      path: EscapeOSPro.ipa
-      if-no-files-found: error
-  # --------------------------------------------------
-  # 10. Create GitHub Release
-  # --------------------------------------------------
-  - name: Create Release
-    shell: bash
-    env:
-      GH_TOKEN: ${{ github.token }}
-    run: |
-      TAG_NAME="build-${{ github.run_number }}"
-      gh release create "$TAG_NAME" \
-        EscapeOSPro.ipa \
-        --title "EscapeOSPro ${{ github.run_number }}" \
-        --prerelease \
-        --generate-notes
+  build:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+      - name: Remove untrusted tap
+        run: |
+          brew untap aws/tap || true
+      - name: Install all required build tools
+        run: |
+          brew install gzip ldid dpkg
+      - name: Setup Theos
+        uses: Randomblock1/theos-action@v1
+        with:
+          theos-dir: '${{ github.workspace }}/theos'
+          theos-src: 'https://github.com/theos/theos'
+          theos-sdks: 'https://github.com/theos/sdks'
+        env:
+          HOMEBREW_NO_REQUIRE_TAP_TRUST: 1
+      - name: Show Theos version and environment
+        run: |
+          export THEOS="${{ github.workspace }}/theos"
+          echo "THEOS=$THEOS"
+          echo "Theos directory:"
+          ls -la "$THEOS"
+          echo "SDK directory:"
+          ls -la "$THEOS/sdks"
+          make --version
+      - name: Build with Theos
+        run: |
+          export THEOS="${{ github.workspace }}/theos"
+          make clean || true
+          make package FINALPACKAGE=1 -j1
+        env:
+          ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true
+          THEOS_VERBOSE: 1
+      - name: Find generated IPA
+        run: |
+          echo "Searching for IPA..."
+          find . -type f -name "*.ipa" -print
+          echo "Searching for DEB..."
+          find . -type f -name "*.deb" -print
+          echo "Searching for APP..."
+          find . -type d -name "*.app" -print
+      - name: Prepare IPA
+        run: |
+          IPA=$(find . -type f -name "*.ipa" -print -quit)
+          if [ -z "$IPA" ]; then
+            echo "ERROR: No IPA was generated."
+            echo "Files generated by the build:"
+            find . -type f | sort
+            exit 1
+          fi
+          echo "Found IPA: $IPA"
+          cp "$IPA" EscapeOSPro.ipa
+          ls -lh EscapeOSPro.ipa
+      - name: Upload IPA as Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: EscapeOSPro-IPA
+          path: EscapeOSPro.ipa
+          if-no-files-found: error
+      - name: Create Release and Upload IPA
+        run: |
+          TAG_NAME="build-${{ github.run_number }}"
+          gh release create "$TAG_NAME" \
+            EscapeOSPro.ipa \
+            --title "EscapeOSPro ${{ github.run_number }}" \
+            --prerelease \
+            --generate-notes
+        env:
+          GH_TOKEN: ${{ github.token }}
