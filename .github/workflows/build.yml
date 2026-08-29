@@ -11,20 +11,52 @@ permissions:
 
 jobs:
   build:
-    runs-on: macos-13
+    runs-on: macos-15-intel
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Select Xcode
+      - name: Show available Xcode versions
         run: |
-          sudo xcode-select -s /Applications/Xcode_14.3.1.app/Contents/Developer
-          echo "Xcode path:"
-          xcode-select -p
-          echo "Xcode version:"
+          echo "Installed Xcode versions:"
+          ls -d /Applications/Xcode*.app 2>/dev/null || true
+
+          echo
+          echo "Current Xcode:"
           xcodebuild -version
-          echo "Swift version:"
+
+          echo
+          echo "Current Swift:"
+          swift --version
+
+      - name: Select compatible Xcode
+        run: |
+          if [ -d "/Applications/Xcode_16.4.app" ]; then
+            sudo xcode-select -s "/Applications/Xcode_16.4.app/Contents/Developer"
+          elif [ -d "/Applications/Xcode_16.3.app" ]; then
+            sudo xcode-select -s "/Applications/Xcode_16.3.app/Contents/Developer"
+          elif [ -d "/Applications/Xcode_16.2.app" ]; then
+            sudo xcode-select -s "/Applications/Xcode_16.2.app/Contents/Developer"
+          elif [ -d "/Applications/Xcode_16.1.app" ]; then
+            sudo xcode-select -s "/Applications/Xcode_16.1.app/Contents/Developer"
+          else
+            echo "No expected Xcode 16.x installation was found."
+            echo "Available Xcode installations:"
+            ls -d /Applications/Xcode*.app 2>/dev/null || true
+            exit 1
+          fi
+
+          echo
+          echo "Selected developer directory:"
+          xcode-select -p
+
+          echo
+          echo "Selected Xcode:"
+          xcodebuild -version
+
+          echo
+          echo "Selected Swift:"
           swift --version
 
       - name: Remove untrusted tap
@@ -44,30 +76,38 @@ jobs:
         env:
           HOMEBREW_NO_REQUIRE_TAP_TRUST: 1
 
-      - name: Verify environment
+      - name: Verify Theos and SDK
         run: |
           export THEOS="${{ github.workspace }}/theos"
 
           echo "======================================"
-          echo "Xcode"
+          echo "THEOS"
+          echo "======================================"
+          echo "THEOS=$THEOS"
+
+          echo
+          echo "======================================"
+          echo "XCODE"
           echo "======================================"
           xcodebuild -version
 
+          echo
           echo "======================================"
-          echo "Swift"
+          echo "SWIFT"
           echo "======================================"
           swift --version
 
+          echo
           echo "======================================"
-          echo "Theos"
+          echo "AVAILABLE THEOS SDKS"
           echo "======================================"
-          echo "THEOS=$THEOS"
-          ls -la "$THEOS"
+          find "$THEOS/sdks" -maxdepth 1 -type d -print
 
+          echo
           echo "======================================"
-          echo "SDKs"
+          echo "IPHONEOS 16.5 SDK"
           echo "======================================"
-          ls -la "$THEOS/sdks"
+          ls -ld "$THEOS/sdks/iPhoneOS16.5.sdk" || true
 
       - name: Build with Theos
         env:
@@ -77,17 +117,29 @@ jobs:
           export THEOS="${{ github.workspace }}/theos"
 
           make clean || true
+
           make package FINALPACKAGE=1 -j1
 
       - name: Find generated files
         run: |
-          echo "IPA files:"
+          echo "======================================"
+          echo "IPA FILES"
+          echo "======================================"
+
           find . -type f -name "*.ipa" -print || true
 
-          echo "DEB files:"
+          echo
+          echo "======================================"
+          echo "DEB FILES"
+          echo "======================================"
+
           find . -type f -name "*.deb" -print || true
 
-          echo "APP bundles:"
+          echo
+          echo "======================================"
+          echo "APP BUNDLES"
+          echo "======================================"
+
           find . -type d -name "*.app" -print || true
 
       - name: Prepare IPA
@@ -98,23 +150,31 @@ jobs:
 
           if [ -z "$IPA" ]; then
             echo "ERROR: No IPA was generated."
+
+            echo
             echo "Generated files:"
             find . -type f | sort
+
             exit 1
           fi
 
-          echo "Found IPA: $IPA"
+          echo "Found IPA:"
+          echo "$IPA"
+
           cp "$IPA" EscapeOSPro.ipa
+
+          echo
+          echo "Final IPA:"
           ls -lh EscapeOSPro.ipa
 
-      - name: Upload IPA
+      - name: Upload IPA as Artifact
         uses: actions/upload-artifact@v4
         with:
           name: EscapeOSPro-IPA
           path: EscapeOSPro.ipa
           if-no-files-found: error
 
-      - name: Create Release
+      - name: Create Release and Upload IPA
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -123,4 +183,5 @@ jobs:
           gh release create "$TAG_NAME" \
             EscapeOSPro.ipa \
             --title "EscapeOSPro ${{ github.run_number }}" \
-            --
+            --prerelease \
+            --generate-notes
