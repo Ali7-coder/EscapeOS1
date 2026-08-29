@@ -13,17 +13,11 @@ jobs:
     runs-on: macos-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
-        env:
-          # تجاوز تحذير Node.js 20
-          ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true
+        uses: actions/checkout@v5   # تم الترقية من v4 إلى v5 لحل تحذير Node.js 20[reference:5]
 
-      # هذه الخطوة لم تعد ضرورية، لأن gzip مثبتة مسبقاً
-      # لكننا نتركها للتوثيق، ونزيل tar
-      - name: Ensure tools are available
+      - name: Install missing build tools
         run: |
-          # نتأكد فقط من أن gzip موجودة، وهي عادة موجودة
-          which gzip || brew install gzip
+          brew install gzip
 
       - name: Setup Theos
         uses: Randomblock1/theos-action@v1
@@ -39,6 +33,7 @@ jobs:
           export THEOS=${{ github.workspace }}/theos
           make package FINALPACKAGE=1
         env:
+          # تجاوز تحذير Node.js 20 (حل مؤقت)
           ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true
 
       - name: Upload IPA as Artifact
