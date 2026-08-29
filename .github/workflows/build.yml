@@ -15,14 +15,13 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v5
 
-      # الخطوة الجديدة: إزالة المصدر غير الموثوق
       - name: Remove untrusted tap
         run: |
           brew untap aws/tap || true
 
-      - name: Install missing build tools
+      - name: Install all required build tools
         run: |
-          brew install gzip
+          brew install gzip ldid dpkg
 
       - name: Setup Theos
         uses: Randomblock1/theos-action@v1
@@ -33,12 +32,20 @@ jobs:
         env:
           HOMEBREW_NO_REQUIRE_TAP_TRUST: 1
 
-      - name: Build with Theos
+      - name: Show Theos version and environment
         run: |
           export THEOS=${{ github.workspace }}/theos
-          make package FINALPACKAGE=1
+          make --version
+          echo "THEOS=$THEOS"
+          ls -la
+
+      - name: Build with Theos (verbose)
+        run: |
+          export THEOS=${{ github.workspace }}/theos
+          make package FINALPACKAGE=1 -j1
         env:
           ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true
+          THEOS_VERBOSE: 1
 
       - name: Upload IPA as Artifact
         uses: actions/upload-artifact@v4
