@@ -9,13 +9,19 @@ permissions:
   contents: write
 
 jobs:
-  build-and-release:
+  build:
     runs-on: macos-latest
     steps:
+      # الخطوة 1: استلام الكود (باستخدام الإصدار الجديد)
       - name: Checkout code
-        # استخدام الإصدار v5 الذي يعمل على Node.js 24 مباشرة [citation:13]
         uses: actions/checkout@v5
 
+      # الخطوة 2: تثبيت الأدوات المفقودة (الحل الأساسي)
+      - name: Install missing tools
+        run: |
+          brew install gzip tar
+
+      # الخطوة 3: تهيئة بيئة Theos
       - name: Setup Theos
         uses: Randomblock1/theos-action@v1
         with:
@@ -23,23 +29,25 @@ jobs:
           theos-src: 'https://github.com/theos/theos'
           theos-sdks: 'https://github.com/theos/sdks'
         env:
-          # حل مشكلة ثقة Homebrew في بيئة البناء [citation:3]
           HOMEBREW_NO_REQUIRE_TAP_TRUST: 1
 
+      # الخطوة 4: بناء التطبيق باستخدام Theos
       - name: Build with Theos
         run: |
           export THEOS=${{ github.workspace }}/theos
           make package FINALPACKAGE=1
+        env:
+          ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true
 
+      # الخطوة 5: رفع ملف الـ IPA كقطعة أثرية
       - name: Upload IPA as Artifact
-        # الإصدار v4 يعمل على Node.js 24 بشكل طبيعي [citation:13]
         uses: actions/upload-artifact@v4
         with:
           name: EscapeOSPro-IPA
           path: ./*.ipa
 
+      # الخطوة 6: إنشاء إصدار ورفع الملف
       - name: Create Release and Upload IPA
-        # إجراء آخر يعتمد على الأوامر الأساسية، وهو أكثر استقرارًا
         run: |
           TAG_NAME="build-${{ github.run_number }}"
           gh release create "$TAG_NAME" ./*.ipa \
