@@ -1,4 +1,4 @@
-name: Build EscapeOSPro
+name: Build EscapeOS
 
 on:
   push:
@@ -11,14 +11,21 @@ permissions:
 
 jobs:
   build:
-    runs-on: macos-15-intel
+    runs-on: macos-13
 
     steps:
-      - name: Checkout code
+      - name: Select Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: '15.0'
+
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Show Xcode and Swift
+      - name: Show build environment
         run: |
+          set -e
+
           echo "======================================"
           echo "XCODE"
           echo "======================================"
@@ -30,11 +37,14 @@ jobs:
           echo "======================================"
           swift --version
 
-      - name: Remove untrusted tap
-        run: |
-          brew untap aws/tap || true
+          echo
+          echo "======================================"
+          echo "IPHONEOS SDK"
+          echo "======================================"
+          xcrun --sdk iphoneos --show-sdk-version
+          xcrun --sdk iphoneos --show-sdk-path
 
-      - name: Install required build tools
+      - name: Install build tools
         run: |
           brew install gzip ldid dpkg
 
@@ -44,63 +54,15 @@ jobs:
           theos-dir: '${{ github.workspace }}/theos'
           theos-src: 'https://github.com/theos/theos'
           theos-sdks: 'https://github.com/theos/sdks'
-        env:
-          HOMEBREW_NO_REQUIRE_TAP_TRUST: 1
 
-      - name: Install iPhoneOS 18.6 SDK
+      - name: Verify Theos SDK
         run: |
           set -e
 
           export THEOS="${{ github.workspace }}/theos"
 
           echo "======================================"
-          echo "Installing iPhoneOS 18.6 SDK"
-          echo "======================================"
-
-          rm -rf iOS-SDKs
-
-          git clone \
-            --depth=1 \
-            --filter=blob:none \
-            --sparse \
-            https://github.com/Tonwalter888/iOS-SDKs.git \
-            iOS-SDKs
-
-          cd iOS-SDKs
-
-          git sparse-checkout set iPhoneOS18.6.sdk
-
-          SDK_PATH="$(pwd)/iPhoneOS18.6.sdk"
-
-          if [ ! -d "$SDK_PATH" ]; then
-            echo "ERROR: iPhoneOS18.6.sdk was not downloaded."
-            exit 1
-          fi
-
-          cp -R "$SDK_PATH" "$THEOS/sdks/"
-
-          cd ..
-
-          echo
-          echo "Installed SDKs:"
-          find "$THEOS/sdks" -maxdepth 1 -type d -name "iPhoneOS*.sdk" -print
-
-          echo
-          echo "Checking iPhoneOS18.6.sdk:"
-          ls -ld "$THEOS/sdks/iPhoneOS18.6.sdk"
-
-      - name: Verify SDK
-        run: |
-          export THEOS="${{ github.workspace }}/theos"
-
-          echo "======================================"
-          echo "THEOS"
-          echo "======================================"
-          echo "THEOS=$THEOS"
-
-          echo
-          echo "======================================"
-          echo "AVAILABLE IPHONE SDKs"
+          echo "THEOS SDKs"
           echo "======================================"
 
           find "$THEOS/sdks" \
@@ -108,24 +70,16 @@ jobs:
             -type d \
             -name "iPhoneOS*.sdk" \
             -print \
-            | sort -V
+            | sort
 
           echo
-          echo "======================================"
-          echo "iPhoneOS18.6 SDK"
-          echo "======================================"
+          echo "Checking iPhoneOS16.5.sdk..."
 
-          if [ ! -d "$THEOS/sdks/iPhoneOS18.6.sdk" ]; then
-            echo "ERROR: iPhoneOS18.6.sdk does not exist."
-            exit 1
-          fi
+          test -d "$THEOS/sdks/iPhoneOS16.5.sdk"
 
-          ls -ld "$THEOS/sdks/iPhoneOS18.6.sdk"
+          echo "iPhoneOS16.5.sdk FOUND"
 
-      - name: Build with Theos
-        env:
-          ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true
-          THEOS_VERBOSE: 1
+      - name: Build
         run: |
           set -e
 
@@ -136,13 +90,7 @@ jobs:
           echo "======================================"
 
           echo "THEOS=$THEOS"
-          echo "SDKVERSION=18.6"
-          echo "Xcode:"
-          xcodebuild -version
-
-          echo
-          echo "Swift:"
-          swift --version
+          echo "SDKVERSION=16.5"
 
           echo
           echo "======================================"
@@ -158,71 +106,34 @@ jobs:
 
           make package \
             FINALPACKAGE=1 \
-            SDKVERSION=18.6 \
+            TARGET=iphone:clang:16.5:18.0 \
+            SDKVERSION=16.5 \
             -j1
 
-      - name: Find generated files
-        run: |
-          echo "======================================"
-          echo "IPA FILES"
-          echo "======================================"
-
-          find . -type f -name "*.ipa" -print || true
-
-          echo
-          echo "======================================"
-          echo "DEB FILES"
-          echo "======================================"
-
-          find . -type f -name "*.deb" -print || true
-
-          echo
-          echo "======================================"
-          echo "APP BUNDLES"
-          echo "======================================"
-
-          find . -type d -name "*.app" -print || true
-
-      - name: Prepare IPA
+      - name: Find IPA
         run: |
           set -e
 
-          IPA="$(find . -type f -name "*.ipa" -print -quit)"
+          echo "======================================"
+          echo "SEARCHING FOR IPA"
+          echo "======================================"
+
+          find . -type f -name "*.ipa" -print
+
+          IPA=$(find . -type f -name "*.ipa" -print -quit)
 
           if [ -z "$IPA" ]; then
             echo "ERROR: No IPA was generated."
-
-            echo
-            echo "Generated files:"
-            find . -type f | sort
-
             exit 1
           fi
 
-          echo "Found IPA:"
-          echo "$IPA"
+          cp "$IPA" EscapeOS.ipa
 
-          cp "$IPA" EscapeOSPro.ipa
+          ls -lh EscapeOS.ipa
 
-          echo
-          echo "Final IPA:"
-          ls -lh EscapeOSPro.ipa
-
-      - name: Upload IPA as Artifact
+      - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
-          name: EscapeOSPro-IPA
-          path: EscapeOSPro.ipa
+          name: EscapeOS-IPA
+          path: EscapeOS.ipa
           if-no-files-found: error
-
-      - name: Create Release and Upload IPA
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          TAG_NAME="build-${{ github.run_number }}"
-
-          gh release create "$TAG_NAME" \
-            EscapeOSPro.ipa \
-            --title "EscapeOSPro ${{ github.run_number }}" \
-            --prerelease \
-            --generate-notes
