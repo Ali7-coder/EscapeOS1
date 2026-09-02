@@ -1,4 +1,4 @@
-name: Build EscapeOS Complete Local
+name: Build EscapeOS
 
 on:
   push:
@@ -11,115 +11,57 @@ permissions:
 
 jobs:
   build:
-    name: Native Standalone IPA Build
+    name: Build EscapeOS IPA via Native Clang
     runs-on: macos-14
-    timeout-minutes: 15
+    timeout-minutes: 20
     
     steps:
-      - name: 1. Checkout Repository Files
+      - name: 1. Checkout Source Code with Submodules
         uses: actions/checkout@v4
         with:
           submodules: recursive
           fetch-depth: 1
 
-      - name: 2. Generate Local Swift Project Architecture
+      - name: 2. Install Package Tools
+        run: |
+          brew install ldid dpkg gzip
+
+      - name: 3. Setup Internal Theos Environment
         run: |
           set -e
-          echo "======================================"
-          echo "GENERATING NATIVE STRUCT FOR XCODEBUILD"
-          echo "======================================"
+          # سحب أداة Theos محلياً بالكامل عبر أداة جيت هوب المحصنة بدلاً من curl
+          git clone --recursive https://github.com $HOME/theos
           
-          # إنشاء حزمة Swift Package محلية لجمع وإجبار الماك على بناء السورس كود داخلياً بدون أدوات خارجية
-          mkdir -p LocalBuildProject
-          cd LocalBuildProject
-          swift package init --type executable
+          # جلب الـ SDK 16.5 الرسمي وسحبه داخل النظام محلياً
+          git clone --depth=1 https://github.com $HOME/theos-sdks
+          mkdir -p $HOME/theos/sdks
+          cp -R $HOME/theos-sdks/iPhoneOS16.5.sdk $HOME/theos/sdks/
           
-          # تنظيف وهيكلة المجلدات الافتراضية
-          rm -rf Sources/Main.swift
-          
-          # نسخ كافة ملفات التطبيق والمكتبات الفرعية إلى بيئة التجميع المحلية
-          cp -R ../EscapeOS Sources/
-          cp -R ../vendor Sources/ || true
-          cd ..
+          # تسجيل المسارات الصارمة داخل الخادم
+          echo "THEOS=$HOME/theos" >> $GITHUB_ENV
+          echo "$HOME/theos/bin" >> $GITHUB_PATH
 
-      - name: 3. Compile Binary via Xcode Core Tools
+      - name: 4. Compile and Package IPA via Theos Engine
         run: |
           set -e
-          echo "======================================"
-          echo "COMPILING SWIFT & C CODE WITH APPLE CLANG"
-          echo "======================================"
+          export THEOS="$HOME/theos"
+          export PATH="$THEOS/bin:$PATH"
           
-          # البناء المباشر للـ Executable عبر المحرك الأساسي لنظام ماك (بدون الحاجة لشبكة أو سيرفرات خارجية)
-          cd LocalBuildProject
-          swift build -c release --triple arm64-apple-ios18.0-macabi || swift build -c release
-          cd ..
+          echo "======================================"
+          echo "EXECUTING COMPILATION"
+          echo "======================================"
+          make clean || true
+          
+          # استدعاء ملف الـ Makefile لتجميع ملفات الـ Swift والـ C معاً بشكل متوافق
+          make package \
+            FINALPACKAGE=1 \
+            TARGET="iphone:clang:16.5:18.0" \
+            ARCHS=arm64 \
+            -j$(sysctl -n hw.ncpu)
 
-      - name: 4. Construct Sideload Package Structure (Payload)
-        run: |
-          set -e
-          echo "======================================"
-          echo "MANUFACTURING IPA CONTAINER STRUCTURE"
-          echo "======================================"
-          
-          # بناء هيكل مجلد التطبيق القياسي لنظام iOS (.app) داخل الـ Payload التلقائي
-          mkdir -p Payload/EscapeOS.app
-          
-          # البحث عن ملف الـ Binary المجمع محلياً ووضعه في مكانه الصحيح
-          BINARY_PATH=$(find LocalBuildProject/.build -type f -name "LocalBuildProject" -o -name "EscapeOS" | head -n 1)
-          
-          if [ -z "$BINARY_PATH" ]; then
-            # خطة بديلة سريعة في حال التجميع المباشر لحزم التطبيق
-            echo "Using dynamic structure backup..."
-            mkdir -p build_output
-            xcrun --sdk iphoneos clang -arch arm64 -isysroot $(xcrun --sdk iphoneos --show-sdk-path) \
-              -F $(xcrun --sdk iphoneos --show-sdk-path)/System/Library/Frameworks \
-              -framework Foundation -framework UIKit -framework SwiftUI \
-              EscapeOS/Engine/bad_query.c -o Payload/EscapeOS.app/EscapeOS || true
-          else
-            cp "$BINARY_PATH" Payload/EscapeOS.app/EscapeOS
-          fi
-          
-          # توليد ملف Info.plist الإجباري للتثبيت محلياً 100%
-          cat <<EOF > Payload/EscapeOS.app/Info.plist
-          <?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://apple.com">
-          <plist version="1.0">
-          <dict>
-              <key>CFBundleExecutable</key>
-              <string>EscapeOS</string>
-              <key>CFBundleIdentifier</key>
-              <string>com.ali7coder.escapeos</string>
-              <key>CFBundleName</key>
-              <string>EscapeOS</string>
-              <key>CFBundleShortVersionString</key>
-              <string>1.0</string>
-              <key>CFBundleVersion</key>
-              <string>1</string>
-              <key>MinimumOSVersion</key>
-              <string>18.0</string>
-              <key>UIDeviceFamily</key>
-              <array>
-                  <integer>1</integer>
-                  <integer>2</integer>
-              </array>
-          </dict>
-          </plist>
-          EOF
-
-      - name: 5. Pack Application to IPA File
-        run: |
-          set -e
-          echo "======================================"
-          echo "COMPRESSING TO PRODUCTION IPA PACK"
-          echo "======================================"
-          
-          # ضغط المجلد المتكامل لإنتاج ملف الـ IPA النهائي الجاهز للتثبيت فوراً عبر iPASide أو TrollStore
-          zip -r EscapeOS.ipa Payload
-          ls -lh EscapeOS.ipa
-
-      - name: 6. Deploy Asset Artifact to Workflow
+      - name: 5. Export Final IPA Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: EscapeOS-Native-IPA
-          path: EscapeOS.ipa
+          name: EscapeOS-Final-IPA
+          path: packages/*.ipa
           if-no-files-found: error
