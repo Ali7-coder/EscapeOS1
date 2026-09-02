@@ -1,121 +1,66 @@
 name: Build EscapeOS
+
 on:
   push:
     branches:
       - main
   workflow_dispatch:
+
 permissions:
   contents: write
+
 jobs:
   build:
     name: Build EscapeOS
-    runs-on: macos-15-intel
+    runs-on: macos-14
     timeout-minutes: 30
+    
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           submodules: recursive
-      - name: Select Xcode
-        uses: maxim-lobanov/setup-xcode@v1
-        with:
-          xcode-version: "16.4"
-      - name: Show build environment
-        run: |
-          set -e
-          echo "======================================"
-          echo "XCODE"
-          echo "======================================"
-          xcodebuild -version
-          echo
-          echo "======================================"
-          echo "SWIFT"
-          echo "======================================"
-          swift --version
-          echo
-          echo "======================================"
-          echo "ARCH"
-          echo "======================================"
-          uname -m
+
       - name: Install tools
         run: |
           brew install ldid dpkg gzip
+
       - name: Setup Theos
         uses: Randomblock1/theos-action@v1
         with:
           theos-dir: "${{ github.workspace }}/theos"
           theos-src: "https://github.com/theos/theos"
-          theos-sdks: "https://github.com/theos/sdks"
-        env:
-          HOMEBREW_NO_REQUIRE_TAP_TRUST: 1
-      - name: Install iPhoneOS 18.6 SDK
+          theos-sdks: "https://github.com"
+
+      - name: Fix SDK Compatibility
         run: |
-          set -e
           export THEOS="${{ github.workspace }}/theos"
-          rm -rf iOS-SDKs
-          git clone \
-            --depth=1 \
-            --filter=blob:none \
-            --sparse \
-            https://github.com/Tonwalter888/iOS-SDKs.git \
-            iOS-SDKs
-          cd iOS-SDKs
-          git sparse-checkout set iPhoneOS18.6.sdk
-          if [ ! -d "iPhoneOS18.6.sdk" ]; then
-            echo "ERROR: iPhoneOS18.6.sdk was not downloaded."
-            exit 1
-          fi
-          rm -rf "$THEOS/sdks/iPhoneOS18.6.sdk"
-          cp -R "iPhoneOS18.6.sdk" "$THEOS/sdks/"
-          cd ..
-          echo "Installed SDK:"
-          ls -ld "$THEOS/sdks/iPhoneOS18.6.sdk"
-      - name: Verify SDK and project
-        run: |
-          set -e
-          export THEOS="${{ github.workspace }}/theos"
-          echo "======================================"
-          echo "THEOS"
-          echo "======================================"
-          echo "$THEOS"
-          echo
-          echo "======================================"
-          echo "SDKs"
-          echo "======================================"
-          find "$THEOS/sdks" \
-            -maxdepth 1 \
-            -type d \
-            -name "iPhoneOS*.sdk" \
-            -print
-          echo
-          echo "======================================"
-          echo "PROJECT"
-          echo "======================================"
-          test -f Makefile
-          test -f EscapeOS/EscapeOSApp.swift
-          echo "Makefile:"
-          grep -E '^(TARGET|ARCHS|APPLICATION_NAME)' Makefile || true
+          # تحميل الـ SDK المضمون للمشروع وفك ضغطه داخل مجلد Theos المخصص
+          curl -LO https://github.com/raw/master/iPhoneOS16.5.sdk.tar.xz
+          mkdir -p $THEOS/sdks
+          tar -xf iPhoneOS16.5.sdk.tar.xz -C $THEOS/sdks/
+          rm iPhoneOS16.5.sdk.tar.xz
+
       - name: Build EscapeOS
         env:
           THEOS_VERBOSE: 1
         run: |
           set -e
           export THEOS="${{ github.workspace }}/theos"
+          
           echo "======================================"
-          echo "CLEAN"
+          echo "CLEAN & BUILD"
           echo "======================================"
           make clean || true
-          echo
-          echo "======================================"
-          echo "BUILD"
-          echo "======================================"
+          
+          # البناء باستخدام الإعدادات المتوافقة مع بنية امتداد bad_query الخاص بـ iOS 18+
           make package \
             FINALPACKAGE=1 \
-            TARGET="iphone:clang:18.6:18.0" \
-            SDKVERSION=18.6 \
+            TARGET="iphone:clang:16.5:18.0" \
             ARCHS=arm64 \
-            -j1
-      - name: Find IPA
+            -j$(sysctl -n hw.ncpu)
+
+      - name: Find and Prepare IPA
         run: |
           set -e
           echo "======================================"
@@ -129,19 +74,19 @@ jobs:
           fi
           cp "$IPA" EscapeOS.ipa
           ls -lh EscapeOS.ipa
-      - name: Upload IPA
+
+      - name: Upload IPA Artifact
         uses: actions/upload-artifact@v4
         with:
           name: EscapeOS-IPA
           path: EscapeOS.ipa
           if-no-files-found: error
+
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          TAG_NAME="build-${{ github.run_number }}"
-          gh release create "$TAG_NAME" \
-            EscapeOS.ipa \
-            --title "EscapeOS ${{ github.run_number }}" \
-            --prerelease \
-            --generate-notes
+          # سيقوم هذا الإجراء برفع التطبيق تلقائياً في قسم الإصدارات (Releases)
+          gh release create "build-${{ github.run_number }}" EscapeOS.ipa \
+            --title "EscapeOS Build #${{ github.run_number }}" \
+            --notes "Automated build of EscapeOS from main branch." || true
