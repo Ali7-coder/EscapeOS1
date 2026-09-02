@@ -13,100 +13,53 @@ jobs:
   build:
     name: Build EscapeOS IPA
     runs-on: macos-14
-    timeout-minutes: 25
+    timeout-minutes: 20
     
     steps:
-      - name: Checkout Source Code
+      - name: 1. Checkout Source Code
         uses: actions/checkout@v4
         with:
           submodules: recursive
-          fetch-depth: 0
+          fetch-depth: 1
 
-      - name: Install System Tools
+      - name: 2. Install System Tools
         run: |
           brew install ldid dpkg gzip
 
-      - name: Install & Configure Rust (Required for idevice_ffi)
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: aarch64-apple-ios
-
-      - name: Install Theos and iOS SDK (Safe Git Protocol)
+      - name: 3. Setup Theos and iOS SDK
         run: |
           set -e
+          # تثبيت الأداة الرسمية في مسار الخادم
           export THEOS="$HOME/theos"
+          bash -c "$(curl -fsSL https://githubusercontent.com)"
           
-          echo "======================================"
-          echo "CLONING THEOS DIRECTLY VIA GIT"
-          echo "======================================"
-          # استخدام git clone المباشر لضمان استقرار التحميل من السيرفر الداخلي
-          git clone --recursive https://github.com $THEOS
-          
-          echo "======================================"
-          echo "CLONING IPHONEOS SDK"
-          echo "======================================"
-          # جلب الـ SDK عبر سحب جزئي سريع وآمن بدون روابط Curl المضطربة
+          # تحميل الـ SDK 16.5 الرسمي وفكه مباشرة
+          curl -sL https://github.com | tar -xz -C $HOME --strip-components=1
           mkdir -p $THEOS/sdks
-          git clone --depth=1 https://github.com $HOME/theos-sdks
-          cp -R $HOME/theos-sdks/iPhoneOS16.5.sdk $THEOS/sdks/
+          cp -R $HOME/iPhoneOS16.5.sdk $THEOS/sdks/
           
-          # تسجيل متغيرات المسارات للنظام
+          # تمرير المسارات للخطوات التالية
           echo "THEOS=$THEOS" >> $GITHUB_ENV
           echo "$THEOS/bin" >> $GITHUB_PATH
 
-      - name: Verify Dependencies & Static Libraries
-        run: |
-          echo "Checking for idevice_ffi static library..."
-          if [ -d "EscapeOS/Tunnel" ]; then
-            ls -la EscapeOS/Tunnel
-          else
-            echo "::warning::Tunnel directory not found!"
-          fi
-
-      - name: Compile and Package IPA
-        env:
-          THEOS_VERBOSE: 1
+      - name: 4. Compile and Package IPA
         run: |
           set -e
-          
           echo "======================================"
-          echo "RUNNING MAKE CLEAN & PACKAGE"
+          echo "STARTING THEOS COMPILATION"
           echo "======================================"
           make clean || true
           
-          # بدء التجميع الفعلي بالاعتماد على إعدادات الـ Makefile
+          # أمر البناء الصارم المطابق لملف الـ Makefile الخاص بك
           make package \
             FINALPACKAGE=1 \
             TARGET="iphone:clang:16.5:18.0" \
             ARCHS=arm64 \
             -j$(sysctl -n hw.ncpu)
 
-      - name: Process Output Artifacts
-        run: |
-          set -e
-          echo "======================================"
-          echo "LOCATING GENERATED IPA"
-          echo "======================================"
-          find . -type f -name "*.ipa" -print
-          
-          OUTPUT_IPA="$(find . -type f -name "*.ipa" -print -quit)"
-          if [ -z "$OUTPUT_IPA" ]; then
-            echo "::error::No IPA package was found. Check compilation logs above."
-            exit 1
-          fi
-          cp "$OUTPUT_IPA" EscapeOS.ipa
-
-      - name: Export IPA as Job Artifact
+      - name: 5. Upload Output IPA
         uses: actions/upload-artifact@v4
         with:
           name: EscapeOS-Final-IPA
-          path: EscapeOS.ipa
+          path: packages/*.ipa
           if-no-files-found: error
-
-      - name: Publish to GitHub Releases
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh release create "v1.0.${{ github.run_number }}" EscapeOS.ipa \
-            --title "EscapeOS Release v1.0.${{ github.run_number }}" \
-            --notes "Automated clean build utilizing native Git workflows." || true
