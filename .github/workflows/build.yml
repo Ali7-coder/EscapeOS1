@@ -1,4 +1,4 @@
-name: Build EscapeOS Final
+name: Build EscapeOS Local Final
 
 on:
   push:
@@ -11,46 +11,96 @@ permissions:
 
 jobs:
   build:
-    name: Build EscapeOS IPA
+    name: Build Local Swift
     runs-on: macos-14
-    timeout-minutes: 20
+    timeout-minutes: 10
     
     steps:
-      - name: 1. Checkout Source Code
+      - name: 1. Checkout Files
         uses: actions/checkout@v4
         with:
           submodules: recursive
           fetch-depth: 1
 
-      - name: 2. Install System Tools
-        run: |
-          brew install ldid dpkg gzip
-
-      - name: 3. Install Rust (Required for idevice_ffi)
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: aarch64-apple-ios
-
-      - name: 4. Setup Theos via Verified Action
-        # استخدام الأداة الرسمية المعتمدة أمنياً داخل سيرفرات GitHub بدون أي Curl أو Git يدوي
-        uses: theos/setup-theos-action@v1
-        with:
-          theos-src: https://github.com
-          theos-sdks: https://github.com
-
-      - name: 5. Compile and Package IPA
+      - name: 2. Compile C Files Independently
         run: |
           set -e
-          # استدعاء أمر البناء الصارم المتوافق مع ملف الـ Makefile الخاص بك
-          make package \
-            FINALPACKAGE=1 \
-            TARGET="iphone:clang:16.5:18.0" \
-            ARCHS=arm64 \
-            -j$(sysctl -n hw.ncpu)
+          echo "======================================"
+          echo "COMPILING C SOURCE FILES"
+          echo "======================================"
+          mkdir -p build_objects
+          
+          # تجميع ملفات الـ C بشكل منفصل تماماً لتجنب خطأ خلط اللغات البرمجية
+          xcrun --sdk iphoneos clang -arch arm64 -c EscapeOS/Engine/bad_query.c -o build_objects/bad_query.o
+          xcrun --sdk iphoneos clang -arch arm64 -c EscapeOS/Engine/zip_crypto.c -o build_objects/zip_crypto.o
 
-      - name: 6. Upload Finished IPA
+      - name: 3. Compile Swift Files and Link Binary
+        run: |
+          set -e
+          echo "======================================"
+          echo "COMPILING SWIFT SOURCE FILES"
+          echo "======================================"
+          mkdir -p Payload/EscapeOS.app
+          
+          # جلب مسار الـ SDK الافتراضي المدمج داخل نظام الماك في جيت هوب
+          SDK_PATH=$(xcrun --sdk iphoneos --show-sdk-path)
+          
+          # تجميع ملفات الـ Swift وربطها مع ملفات الـ C المجمعة محلياً بدون أي إنترنت
+          xcrun --sdk iphoneos swiftc -target arm64-apple-ios16.0 \
+            -sdk $SDK_PATH \
+            EscapeOS/EscapeOSApp.swift \
+            EscapeOS/Views/*.swift \
+            EscapeOS/Engine/ZipReader.swift \
+            EscapeOS/Engine/BackupPaths.swift \
+            EscapeOS/Engine/RestoreService.swift \
+            EscapeOS/Engine/SandboxEscape.swift \
+            EscapeOS/Engine/FileKind.swift \
+            EscapeOS/Engine/FileClipboard.swift \
+            EscapeOS/Engine/FileService.swift \
+            EscapeOS/Engine/AppDiscovery.swift \
+            EscapeOS/Engine/BackupService.swift \
+            EscapeOS/Engine/ZipWriter.swift \
+            EscapeOS/Engine/ZipPassword.swift \
+            EscapeOS/Engine/SevenZipAES.swift \
+            EscapeOS/Engine/ArchiveExtractor.swift \
+            EscapeOS/Engine/ReclaimService.swift \
+            build_objects/bad_query.o \
+            build_objects/zip_crypto.o \
+            -o Payload/EscapeOS.app/EscapeOS
+
+      - name: 4. Create Package Info
+        run: |
+          set -e
+          # إنشاء ملف التعريف الخاص بالتطبيق ليعمل على الهاتف مباشرة
+          cat <<EOF > Payload/EscapeOS.app/Info.plist
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://apple.com">
+          <plist version="1.0">
+          <dict>
+              <key>CFBundleExecutable</key>
+              <string>EscapeOS</string>
+              <key>CFBundleIdentifier</key>
+              <string>com.ali7coder.escapeos</string>
+              <key>CFBundleName</key>
+              <string>EscapeOS</string>
+              <key>CFBundleShortVersionString</key>
+              <string>1.0</string>
+              <key>CFBundleVersion</key>
+              <string>1</string>
+              <key>MinimumOSVersion</key>
+              <string>16.0</string>
+          </dict>
+          </plist>
+          EOF
+
+      - name: 5. Zip to Final IPA
+        run: |
+          set -e
+          zip -r EscapeOS.ipa Payload
+          ls -lh EscapeOS.ipa
+
+      - name: 6. Upload IPA
         uses: actions/upload-artifact@v4
         with:
-          name: EscapeOS-Final-IPA
-          path: packages/*.ipa
-          if-no-files-found: error
+          name: EscapeOS-Local-IPA
+          path: EscapeOS.ipa
