@@ -31,20 +31,26 @@ jobs:
         with:
           targets: aarch64-apple-ios
 
-      - name: Install Theos Directly
+      - name: Install Theos and iOS SDK (Safe Git Protocol)
         run: |
           set -e
-          # تثبيت أداة Theos الرسمية يدوياً في مسار مسجل داخل الخادم
           export THEOS="$HOME/theos"
-          bash -c "$(curl -fsSL https://githubusercontent.com)"
           
-          # تثبيت الـ SDK 16.5 المطلوب وفكه في مسار البيئة الافتراضية الصحيح
-          curl -LO https://github.com
+          echo "======================================"
+          echo "CLONING THEOS DIRECTLY VIA GIT"
+          echo "======================================"
+          # استخدام git clone المباشر لضمان استقرار التحميل من السيرفر الداخلي
+          git clone --recursive https://github.com $THEOS
+          
+          echo "======================================"
+          echo "CLONING IPHONEOS SDK"
+          echo "======================================"
+          # جلب الـ SDK عبر سحب جزئي سريع وآمن بدون روابط Curl المضطربة
           mkdir -p $THEOS/sdks
-          tar -xf iPhoneOS16.5.sdk.tar.xz -C $THEOS/sdks/
-          rm iPhoneOS16.5.sdk.tar.xz
+          git clone --depth=1 https://github.com $HOME/theos-sdks
+          cp -R $HOME/theos-sdks/iPhoneOS16.5.sdk $THEOS/sdks/
           
-          # حفظ متغيرات البيئة لكي تراها الخطوات التالية في جيت هوب
+          # تسجيل متغيرات المسارات للنظام
           echo "THEOS=$THEOS" >> $GITHUB_ENV
           echo "$THEOS/bin" >> $GITHUB_PATH
 
@@ -68,7 +74,7 @@ jobs:
           echo "======================================"
           make clean || true
           
-          # البناء بالاعتماد الكامل على المسار والمتغيرات المطابقة للمشروع
+          # بدء التجميع الفعلي بالاعتماد على إعدادات الـ Makefile
           make package \
             FINALPACKAGE=1 \
             TARGET="iphone:clang:16.5:18.0" \
@@ -103,4 +109,4 @@ jobs:
         run: |
           gh release create "v1.0.${{ github.run_number }}" EscapeOS.ipa \
             --title "EscapeOS Release v1.0.${{ github.run_number }}" \
-            --notes "Automated clean build bypassing problematic actions wrapper." || true
+            --notes "Automated clean build utilizing native Git workflows." || true
