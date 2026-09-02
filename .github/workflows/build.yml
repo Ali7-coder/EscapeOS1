@@ -1,4 +1,4 @@
-name: Build EscapeOS
+name: Build EscapeOS Local
 
 on:
   push:
@@ -11,9 +11,9 @@ permissions:
 
 jobs:
   build:
-    name: Build EscapeOS IPA
+    name: Build Native IPA
     runs-on: macos-14
-    timeout-minutes: 20
+    timeout-minutes: 15
     
     steps:
       - name: 1. Checkout Source Code
@@ -22,44 +22,50 @@ jobs:
           submodules: recursive
           fetch-depth: 1
 
-      - name: 2. Install System Tools
+      - name: 2. Force Local DNS Fix
+        # إجبار سيرفر ماك على استخدام خوادم جوجل للـ DNS لحل مشكلة عدم قراءة الروابط إن وجدت
         run: |
-          brew install ldid dpkg gzip
+          sudo networksetup -setdnsservers Wi-Fi 8.8.8.8 1.1.1.1 || true
+          sudo networksetup -setdnsservers Ethernet 8.8.8.8 1.1.1.1 || true
 
-      - name: 3. Setup Theos and iOS SDK
-        run: |
-          set -e
-          # تثبيت الأداة الرسمية في مسار الخادم
-          export THEOS="$HOME/theos"
-          bash -c "$(curl -fsSL https://githubusercontent.com)"
-          
-          # تحميل الـ SDK 16.5 الرسمي وفكه مباشرة
-          curl -sL https://github.com | tar -xz -C $HOME --strip-components=1
-          mkdir -p $THEOS/sdks
-          cp -R $HOME/iPhoneOS16.5.sdk $THEOS/sdks/
-          
-          # تمرير المسارات للخطوات التالية
-          echo "THEOS=$THEOS" >> $GITHUB_ENV
-          echo "$THEOS/bin" >> $GITHUB_PATH
-
-      - name: 4. Compile and Package IPA
+      - name: 3. Compile Project Using Xcode
         run: |
           set -e
           echo "======================================"
-          echo "STARTING THEOS COMPILATION"
+          echo "BUILDING WITH NATIVE XCODE TOOLS"
           echo "======================================"
-          make clean || true
           
-          # أمر البناء الصارم المطابق لملف الـ Makefile الخاص بك
-          make package \
-            FINALPACKAGE=1 \
-            TARGET="iphone:clang:16.5:18.0" \
-            ARCHS=arm64 \
-            -j$(sysctl -n hw.ncpu)
+          # البناء المباشر باستخدام المحرك الافتراضي للماك بدون الحاجة لـ Theos الخارجي
+          xcodebuild -project "EscapeOS.xcodeproj" \
+            -scheme "EscapeOS" \
+            -configuration Release \
+            -sdk iphoneos \
+            -arch arm64 \
+            CODE_SIGNING_ALLOWED=NO \
+            DSTROOT="$PWD/build/root" \
+            OBJROOT="$PWD/build/obj" \
+            SYMROOT="$PWD/build/sym" \
+            SHARED_PRECOMPS_DIR="$PWD/build/shared" \
+            build
 
-      - name: 5. Upload Output IPA
+      - name: 4. Package into IPA Format
+        run: |
+          set -e
+          echo "======================================"
+          echo "PACKAGING TO IPA FILE"
+          echo "======================================"
+          
+          # تجهيز بنية مجلدات تطبيق الـ iOS الافتراضية
+          mkdir -p Payload
+          cp -R build/sym/Release-iphoneos/EscapeOS.app Payload/
+          
+          # ضغط المجلد بصيغة IPA النهائية والتوقيع الوهمي
+          zip -r EscapeOS.ipa Payload
+          ls -lh EscapeOS.ipa
+
+      - name: 5. Export IPA To GitHub Actions
         uses: actions/upload-artifact@v4
         with:
           name: EscapeOS-Final-IPA
-          path: packages/*.ipa
+          path: EscapeOS.ipa
           if-no-files-found: error
